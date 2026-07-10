@@ -1,0 +1,785 @@
+openapi: 3.0.3
+info:
+  title: Antojados API
+  version: 1.0.0
+  description: API REST de AntojadosMX - Auth, Feed, Places, Posts, Social, Biz, Rewards, Media, Sync, Analytics, Equipo, GT Panel.
+servers:
+  - url: https://api.antojadosmx.mx
+    description: Produccion (Cloudflare HTTPS)
+  - url: http://185.187.235.253:8010
+    description: Contabo (IP directa - fallback)
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Feed
+  - name: Places
+  - name: Posts
+  - name: Social
+  - name: Biz
+  - name: Rewards
+  - name: Media
+  - name: Sync
+  - name: Analytics
+  - name: Rating
+  - name: Equipo
+  - name: Instancias
+  - name: GT Tenants
+  - name: GT Tiles
+  - name: GT Moderation
+  - name: GT Notifications
+  - name: GT Ops
+  - name: GT Dimensions
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar usuario
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/auth/profile/{user_id}:
+    get:
+      tags: [Auth]
+      summary: Obtener perfil
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    patch:
+      tags: [Auth]
+      summary: Actualizar perfil
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/feed:
+    get:
+      tags: [Feed]
+      summary: Feed principal
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/top-places:
+    get:
+      tags: [Feed]
+      summary: Top places
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/places/search-gplaces:
+    get:
+      tags: [Places]
+      summary: Buscar en Google Places
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/places:
+    get:
+      tags: [Places]
+      summary: Listar lugares
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Places]
+      summary: Crear lugar
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/places/{place_id}:
+    get:
+      tags: [Places]
+      summary: Obtener lugar
+      parameters: [{in: path, name: place_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    patch:
+      tags: [Places]
+      summary: Actualizar lugar
+      parameters: [{in: path, name: place_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/places/{place_id}/posts:
+    get:
+      tags: [Places]
+      summary: Posts de un lugar
+      parameters: [{in: path, name: place_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/places/{place_id}/ratings-summary:
+    get:
+      tags: [Places]
+      summary: Resumen de ratings de un lugar
+      parameters: [{in: path, name: place_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/posts:
+    get:
+      tags: [Posts]
+      summary: Listar posts
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Posts]
+      summary: Crear post
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/posts/{post_id}:
+    get:
+      tags: [Posts]
+      summary: Obtener post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Posts]
+      summary: Eliminar post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+
+  /api/v1/antojados/posts/{post_id}/like:
+    post:
+      tags: [Social]
+      summary: Dar like a post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Social]
+      summary: Quitar like de post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+  /api/v1/antojados/posts/{post_id}/comments:
+    post:
+      tags: [Social]
+      summary: Comentar post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "201": { description: Created }
+    get:
+      tags: [Social]
+      summary: Comentarios de post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/posts/{post_id}/ratings:
+    post:
+      tags: [Social]
+      summary: Calificar post
+      parameters: [{in: path, name: post_id, required: true, schema: {type: string}}]
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/social/follows:
+    post:
+      tags: [Social]
+      summary: Seguir o dejar de seguir usuario
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/social/following/{user_id}:
+    get:
+      tags: [Social]
+      summary: Usuarios que sigue
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/social/followers/{user_id}:
+    get:
+      tags: [Social]
+      summary: Seguidores del usuario
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/social/saves:
+    post:
+      tags: [Social]
+      summary: Guardar item
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/social/saves/{user_id}:
+    get:
+      tags: [Social]
+      summary: Guardados del usuario
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/social/saves/{user_id}/feed:
+    get:
+      tags: [Social]
+      summary: Feed de guardados del usuario
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/social/report:
+    post:
+      tags: [Social]
+      summary: Reportar contenido
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/rating-phrases:
+    get:
+      tags: [Rating]
+      summary: Frases de rating disponibles
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/rewards/campaigns:
+    get:
+      tags: [Rewards]
+      summary: Listar campanas de rewards
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/rewards/campaigns/{campaign_id}:
+    get:
+      tags: [Rewards]
+      summary: Detalle de campana
+      parameters: [{in: path, name: campaign_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/rewards/eligibility:
+    get:
+      tags: [Rewards]
+      summary: Verificar elegibilidad
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/rewards/redeem:
+    post:
+      tags: [Rewards]
+      summary: Canjear reward
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/rewards/redemptions/{user_id}:
+    get:
+      tags: [Rewards]
+      summary: Historial de canjes del usuario
+      parameters: [{in: path, name: user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/media/upload:
+    post:
+      tags: [Media]
+      summary: Subir archivo multimedia
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/users/{userId}/media:
+    get:
+      tags: [Media]
+      summary: Media del usuario
+      parameters: [{in: path, name: userId, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/sync/events:
+    post:
+      tags: [Sync]
+      summary: Enviar eventos de sincronizacion offline
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/analytics/engagement:
+    get:
+      tags: [Analytics]
+      summary: Metricas de engagement
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/analytics/place-scores:
+    get:
+      tags: [Analytics]
+      summary: Scores de lugares
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/analytics/user-score:
+    get:
+      tags: [Analytics]
+      summary: Score del usuario
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/cities/search:
+    get:
+      tags: [Analytics]
+      summary: Buscar ciudades
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/biz/posts:
+    post:
+      tags: [Biz]
+      summary: Crear post de negocio
+      responses:
+        "201": { description: Created }
+    get:
+      tags: [Biz]
+      summary: Listar posts de negocio
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/biz/posts/{biz_post_id}:
+    get:
+      tags: [Biz]
+      summary: Detalle de post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Biz]
+      summary: Eliminar post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+  /api/v1/antojados/biz/posts/{biz_post_id}/like:
+    post:
+      tags: [Biz]
+      summary: Like a post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Biz]
+      summary: Quitar like de post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+  /api/v1/antojados/biz/posts/{biz_post_id}/comments:
+    get:
+      tags: [Biz]
+      summary: Comentarios del post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Biz]
+      summary: Comentar post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/biz/posts/{biz_post_id}/taps:
+    patch:
+      tags: [Biz]
+      summary: Registrar tap en post de negocio
+      parameters: [{in: path, name: biz_post_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/biz/feed:
+    get:
+      tags: [Biz]
+      summary: Feed del negocio
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/biz/tenants/me/tiles:
+    get:
+      tags: [Biz]
+      summary: Tiles del tenant actual
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Biz]
+      summary: Crear tile del tenant
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/biz/tenants/me/tiles/{id}:
+    delete:
+      tags: [Biz]
+      summary: Eliminar tile del tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+  /api/v1/antojados/biz/instancia/init:
+    post:
+      tags: [Biz]
+      summary: Inicializar instancia de negocio
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/biz/contract:
+    post:
+      tags: [Biz]
+      summary: Crear contrato de negocio
+      responses:
+        "201": { description: Created }
+
+  /api/v1/antojados/equipo/mi-tenant:
+    get:
+      tags: [Equipo]
+      summary: Info del tenant del usuario
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/perfiles:
+    get:
+      tags: [Equipo]
+      summary: Perfiles del equipo
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/usuarios:
+    get:
+      tags: [Equipo]
+      summary: Usuarios del equipo
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/usuarios/{tenant_user_id}/perfil:
+    patch:
+      tags: [Equipo]
+      summary: Actualizar perfil de usuario del equipo
+      parameters: [{in: path, name: tenant_user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/usuarios/{tenant_user_id}/revocar:
+    patch:
+      tags: [Equipo]
+      summary: Revocar acceso de usuario del equipo
+      parameters: [{in: path, name: tenant_user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/usuarios/transferir-admin:
+    post:
+      tags: [Equipo]
+      summary: Transferir admin del equipo
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/invitaciones:
+    get:
+      tags: [Equipo]
+      summary: Listar invitaciones
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/invitar:
+    post:
+      tags: [Equipo]
+      summary: Invitar usuario al equipo
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/equipo/invitacion/{invite_code}:
+    get:
+      tags: [Equipo]
+      summary: Detalle de invitacion
+      parameters: [{in: path, name: invite_code, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/redimir:
+    post:
+      tags: [Equipo]
+      summary: Redimir invitacion
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/asignaciones/{tenant_user_id}:
+    get:
+      tags: [Equipo]
+      summary: Asignaciones del usuario del equipo
+      parameters: [{in: path, name: tenant_user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [Equipo]
+      summary: Actualizar asignaciones del usuario del equipo
+      parameters: [{in: path, name: tenant_user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/equipo/asignaciones/{tenant_user_id}/seed:
+    post:
+      tags: [Equipo]
+      summary: Seed de asignaciones
+      parameters: [{in: path, name: tenant_user_id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/instancias/me/cascade-status:
+    get:
+      tags: [Instancias]
+      summary: Estado de cascada de la instancia actual
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/instancias/me/cascade:
+    get:
+      tags: [Instancias]
+      summary: Cascada de la instancia actual
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/tenants:
+    get:
+      tags: [GT Tenants]
+      summary: Listar tenants (GT Panel)
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}:
+    get:
+      tags: [GT Tenants]
+      summary: Detalle de tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/activate:
+    post:
+      tags: [GT Tenants]
+      summary: Activar tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/suspend:
+    post:
+      tags: [GT Tenants]
+      summary: Suspender tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/reactivate:
+    post:
+      tags: [GT Tenants]
+      summary: Reactivar tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/rematerialize:
+    post:
+      tags: [GT Tenants]
+      summary: Rematerializar tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/screens:
+    get:
+      tags: [GT Tenants]
+      summary: Pantallas del tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/screens/{code}:
+    patch:
+      tags: [GT Tenants]
+      summary: Actualizar pantalla del tenant
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+        - {in: path, name: code, required: true, schema: {type: string}}
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/tiles/pending:
+    get:
+      tags: [GT Tiles]
+      summary: Tiles pendientes de aprobacion
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/tiles:
+    get:
+      tags: [GT Tiles]
+      summary: Tiles de un tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tiles/{id}/approve:
+    post:
+      tags: [GT Tiles]
+      summary: Aprobar tile
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tiles/{id}/reject:
+    post:
+      tags: [GT Tiles]
+      summary: Rechazar tile
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tiles/{id}/disable:
+    post:
+      tags: [GT Tiles]
+      summary: Deshabilitar tile
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/moderation/queue:
+    get:
+      tags: [GT Moderation]
+      summary: Cola de moderacion
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/moderation/{type}/{id}/approve:
+    post:
+      tags: [GT Moderation]
+      summary: Aprobar item en moderacion
+      parameters:
+        - {in: path, name: type, required: true, schema: {type: string}}
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/moderation/{type}/{id}/reject:
+    post:
+      tags: [GT Moderation]
+      summary: Rechazar item en moderacion
+      parameters:
+        - {in: path, name: type, required: true, schema: {type: string}}
+        - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/tenants/{id}/notifications:
+    get:
+      tags: [GT Notifications]
+      summary: Notificaciones de tenant (GT)
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [GT Notifications]
+      summary: Crear notificacion para tenant (GT)
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/notifications:
+    get:
+      tags: [GT Notifications]
+      summary: Notificaciones del usuario actual
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/notifications/{id}/read:
+    patch:
+      tags: [GT Notifications]
+      summary: Marcar notificacion como leida
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/notification-sequences:
+    get:
+      tags: [GT Notifications]
+      summary: Secuencias de notificacion
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [GT Notifications]
+      summary: Crear secuencia de notificacion
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/gt/notification-sequences/{id}/assign:
+    post:
+      tags: [GT Notifications]
+      summary: Asignar secuencia de notificacion
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/settings:
+    get:
+      tags: [GT Ops]
+      summary: Configuracion global GT
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/settings/{key}:
+    patch:
+      tags: [GT Ops]
+      summary: Actualizar setting GT
+      parameters: [{in: path, name: key, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/audit:
+    get:
+      tags: [GT Ops]
+      summary: Audit log global GT
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/audit:
+    get:
+      tags: [GT Ops]
+      summary: Audit log de tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/suspensions:
+    get:
+      tags: [GT Ops]
+      summary: Historial de suspensiones de tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/economic-snapshot:
+    get:
+      tags: [GT Ops]
+      summary: Snapshot economico del tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/economic-snapshot/sync:
+    post:
+      tags: [GT Ops]
+      summary: Sincronizar snapshot economico
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/economic-event:
+    post:
+      tags: [GT Ops]
+      summary: Registrar evento economico del tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "201": { description: Created }
+  /api/v1/antojados/gt/tenants/{id}/packages:
+    get:
+      tags: [GT Ops]
+      summary: Paquetes del tenant
+      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/tenants/{id}/packages/{code}:
+    post:
+      tags: [GT Ops]
+      summary: Activar paquete para tenant
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}}
+        - {in: path, name: code, required: true, schema: {type: string}}
+      responses:
+        "200": { description: OK }
+
+  /api/v1/antojados/gt/dimensions:
+    get:
+      tags: [GT Dimensions]
+      summary: Listar dimensiones GT
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/sub-dimensions:
+    get:
+      tags: [GT Dimensions]
+      summary: Listar sub-dimensiones GT
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/dimensions/batch-approve:
+    post:
+      tags: [GT Dimensions]
+      summary: Aprobacion masiva de dimensiones
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/sub-dimensions/batch-approve:
+    post:
+      tags: [GT Dimensions]
+      summary: Aprobacion masiva de sub-dimensiones
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/dimensions/{code}/status:
+    patch:
+      tags: [GT Dimensions]
+      summary: Actualizar estado de dimension
+      parameters: [{in: path, name: code, required: true, schema: {type: string}}]
+      responses:
+        "200": { description: OK }
+  /api/v1/antojados/gt/dimensions/{code}:
+    delete:
+      tags: [GT Dimensions]
+      summary: Eliminar dimension
+      parameters: [{in: path, name: code, required: true, schema: {type: string}}]
+      responses:
+        "204": { description: No Content }
+  /api/v1/antojados/gt/scanner/run:
+    post:
+      tags: [GT Dimensions]
+      summary: Ejecutar scanner de dimensiones
+      responses:
+        "200": { description: OK }

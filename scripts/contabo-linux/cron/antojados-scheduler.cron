@@ -1,0 +1,8 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/mssql-tools18/bin
+
+*/15 * * * * /opt/api_antojados/scripts/contabo-linux/run-feed-ingestion.sh
+0 2 * * * /opt/api_antojados/scripts/contabo-linux/run-daily-analytics.sh
+0 4 1 * * /opt/api_antojados/scripts/contabo-linux/run-monthly-analytics.sh
+0 5 * * * /opt/api_antojados/scripts/contabo-linux/run-sql-job.sh job6_purge_streams ATLX_GT_INTEGRATION "EXEC gt_antojados.usp_s5_purge_streams;"
+0 1 * * 0 /opt/api_antojados/scripts/contabo-linux/run-sql-job.sh job7_purge_ingesta ATLX_GT_INTEGRATION "EXEC gt_antojados.usp_fei_purge_processed;"
