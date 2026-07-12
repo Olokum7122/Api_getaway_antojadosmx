@@ -16,7 +16,7 @@
  *   - No depende de ningún resolver/mapper en particular
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  * ══════════════════════════════════════════════════════════════════════════════
  */
 

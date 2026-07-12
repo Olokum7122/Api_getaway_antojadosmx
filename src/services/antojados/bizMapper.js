@@ -34,7 +34,7 @@
  *   mapBizTileList                  → sponsorManager
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 1, 2, 5)
+ *   - antojadosmx/docs/feed.md (Sección 1, 2, 5)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 

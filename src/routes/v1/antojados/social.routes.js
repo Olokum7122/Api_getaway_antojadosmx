@@ -30,7 +30,7 @@
  * ⚠️ NOTA: Algunos endpoints de likes/comments compiten con posts.routes.js.
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 5)
+ *   - antojadosmx/docs/feed.md (Sección 5)
  *   - social.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

@@ -29,7 +29,7 @@
  *   listSponsorExpediente
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 1, 2, 5)
+ *   - antojadosmx/docs/feed.md (Sección 1, 2, 5)
  *   - bizResolver.js, bizMapper.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

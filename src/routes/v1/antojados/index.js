@@ -10,8 +10,10 @@
  * NO HACE:
  *   - No contiene lógica de negocio
  *   - No expone rutas fuera del prefijo /api/v1/antojados
+ *   - No incluye rutas de Explorer (publications, packages-draft, templates)
+ *     Explorer publica como usuario feed, no es parte del consumo de datos
  *
- * SUB-ROUTERS (según modelo feed.md):
+ * SUB-ROUTERS (según modelo feed.md y modelo vertical/transversal):
  *   auth.routes        → autenticación
  *   app-diag.routes    → diagnóstico de app
  *   feedback.routes    → feedback de usuario
@@ -27,29 +29,34 @@
  *   biz.routes         → biz_posts (§1, §2, §5)
  *   equipo.routes      → equipo de trabajo
  *   instancias.routes  → instancias de negocio
- *   templates.routes   → plantillas de contenido
- *   publications.routes → publicaciones
- *   packages-draft.routes → paquetes/borradores
- *   gt-proxy.routes    → proxy GT API (Android)
- *   gt-tenants.routes  → GT tenants (fallback)
- *   gt-efirma.routes   → GT e-firma (fallback)
- *   gt-dimensions.routes → GT dimensiones (fallback)
- *   gt-moderation.routes → moderación social
- *   gt-notifications.routes → notificaciones
  *
- * ⚠️ NOTA: Muchos de estos sub-routers están fuera del modelo feed.md
- *          (auth, equipo, instancias, templates, packages, rewards, etc.)
- *          y pertenecen a otros dominios del monolito.
+ * RUTAS GT (proxy → GT API independiente :4010):
+ *   gt-proxy.routes    → proxy GT API
+ *   gt-tenants.routes  → fallback GT
+ *   gt-efirma.routes   → fallback GT
+ *   gt-dimensions.routes → fallback GT
+ *   gt-moderation.routes → moderación social (app-facing)
+ *   gt-notifications.routes → notificaciones (app-facing)
+ *
+ * RUTAS ELIMINADAS (Explorer legacy — no forman parte del feed):
+ *   publications.routes     → 🗑️ ELIMINADO
+ *   packages-draft.routes   → 🗑️ ELIMINADO
+ *   templates.routes        → 🗑️ ELIMINADO
+ *   gt-cascades.routes      → 🗑️ ELIMINADO
+ *   gt-ops.routes           → 🗑️ ELIMINADO
+ *   gt-templates.routes     → 🗑️ ELIMINADO
+ *   gt-tiles.routes         → 🗑️ ELIMINADO
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11.4)
+ *   - antojadosmx/docs/feed.md (Sección 11.4)
+ *   - PLAN_REESTRUCTURACION_CONSUMO.md
  * ══════════════════════════════════════════════════════════════════════════════
  */
 const { Router } = require('express');
 
 const router = Router();
 
-// App-facing
+// ─── App-facing (dominio Antojados) ─────────────────────────────────
 router.use(require('./auth.routes'));
 router.use(require('./app-diag.routes'));
 router.use(require('./feedback.routes'));
@@ -65,22 +72,13 @@ router.use(require('./analytics.routes'));
 router.use(require('./biz.routes'));
 router.use(require('./equipo.routes'));
 router.use(require('./instancias.routes'));
-router.use(require('./templates.routes'));
-router.use(require('./publications.routes'));
-router.use(require('./packages-draft.routes'));
 
-// GT Panel (owner GT API): passthrough principal para Android new / app consumers.
-// Si GT_API_BASE_URL existe, todas las rutas /gt deben resolverse primero por proxy.
+// ─── GT (proxy → GT API :4010) ─────────────────────────────────────
 router.use(require('./gt-proxy.routes'));
-
-// GT-local endpoints quedan como fallback solamente cuando el proxy no esta configurado.
 router.use(require('./gt-tenants.routes'));
 router.use(require('./gt-efirma.routes'));
 router.use(require('./gt-dimensions.routes'));
-
-// App-facing que viven en archivos mixtos con rutas /gt.
-router.use(require('./gt-moderation.routes')); // /social/report (app-facing)
-router.use(require('./gt-notifications.routes')); // /notifications (app-facing)
+router.use(require('./gt-moderation.routes'));
+router.use(require('./gt-notifications.routes'));
 
 module.exports = router;
-

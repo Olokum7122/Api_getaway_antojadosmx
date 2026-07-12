@@ -18,7 +18,7 @@
  *   GET    /places/:id/ratings-summary    → resumen de ratings
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  *   - places.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

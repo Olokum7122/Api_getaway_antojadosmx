@@ -18,7 +18,7 @@
  *   listSaves, getSavesFeed
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 5: Interacciones)
+ *   - antojadosmx/docs/feed.md (Sección 5: Interacciones)
  *   - socialResolver.js, socialMapper.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

@@ -19,7 +19,7 @@
  *   mapPlaceRatingsSummary → resumen de calificaciones
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  *   - placesResolver.js, places.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

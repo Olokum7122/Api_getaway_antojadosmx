@@ -14,7 +14,7 @@
  *   POST   /geo/resolve      → resolver contexto por lat/lng (body)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11.2)
+ *   - antojadosmx/docs/feed.md (Sección 11.2)
  *   - geo.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

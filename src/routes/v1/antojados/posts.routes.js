@@ -33,8 +33,8 @@
  *   - content_text max 2000 chars (§7.6)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 3: soc_posts)
- *   - apps-antojados/docs/feed.md (Sección 5: SPs Soc)
+ *   - antojadosmx/docs/feed.md (Sección 3: soc_posts)
+ *   - antojadosmx/docs/feed.md (Sección 5: SPs Soc)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 const { Router } = require('express');

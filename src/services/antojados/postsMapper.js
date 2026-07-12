@@ -20,8 +20,8 @@
  *   mapRatePostResult   → valida rating_id (fuera del modelo feed.md)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 3: soc_posts)
- *   - apps-antojados/docs/feed.md (Sección 5: SPs)
+ *   - antojadosmx/docs/feed.md (Sección 3: soc_posts)
+ *   - antojadosmx/docs/feed.md (Sección 5: SPs)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 

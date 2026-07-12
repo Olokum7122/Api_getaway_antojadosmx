@@ -18,7 +18,7 @@
  *   resolveBarContext → SP antojados_core.usp_geo_bar_context_resolve
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11.2: Estructura del Feed — GEO)
+ *   - antojadosmx/docs/feed.md (Sección 11.2: Estructura del Feed — GEO)
  *   - geoMapper.js, geo.service.js, geo.routes.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

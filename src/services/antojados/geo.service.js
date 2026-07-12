@@ -17,7 +17,7 @@
  *   resolveBarContext → resolver contexto de barra por coordenadas
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11.2)
+ *   - antojadosmx/docs/feed.md (Sección 11.2)
  *   - geoResolver.js, geoMapper.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

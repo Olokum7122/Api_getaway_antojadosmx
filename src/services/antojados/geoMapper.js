@@ -19,7 +19,7 @@
  *   mapBarContext → wrapper que mapea context + normalBar + barrioBar
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11.2: GEO)
+ *   - antojadosmx/docs/feed.md (Sección 11.2: GEO)
  *   - geoResolver.js, geo.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

@@ -49,7 +49,7 @@
  *     Columnas: user_id, interaction_type, content_text, parent_comment_id,
  *               moderation_status, created_at_client, received_at_server
  *
- * MODELO DE DATOS: apps-antojados/docs/feed.md (Sección 1, 2, 5)
+ * MODELO DE DATOS: antojadosmx/docs/feed.md (Sección 1, 2, 5)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 

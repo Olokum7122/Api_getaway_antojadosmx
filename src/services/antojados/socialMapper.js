@@ -25,7 +25,7 @@
  *   mapToggleResult   → valida acción toggle presente
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  *   - socialResolver.js, social.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

@@ -25,7 +25,7 @@
  *   - Eventos analíticos (likes, views) usan getPool('integration').
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11: dependencias de pool)
+ *   - antojadosmx/docs/feed.md (Sección 11: dependencias de pool)
  *   - apps-antojados/Api_getaway_antojadosmx/.env (config de pools)
  * ══════════════════════════════════════════════════════════════════════════════
  */

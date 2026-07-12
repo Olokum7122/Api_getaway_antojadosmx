@@ -29,7 +29,7 @@
  *
  * REFERENCIAS:
  *   - feedService.js → getFeed() / getFeedWithMedia()
- *   - apps-antojados/docs/feed.md (Sección 11.4: Contrato de Rutas)
+ *   - antojadosmx/docs/feed.md (Sección 11.4: Contrato de Rutas)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 

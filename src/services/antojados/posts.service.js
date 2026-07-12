@@ -20,8 +20,8 @@
  *   ratePost — usa soc_post_ratings (no documentado en feed.md)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 3: soc_posts)
- *   - apps-antojados/docs/feed.md (Sección 5: SPs Soc)
+ *   - antojadosmx/docs/feed.md (Sección 3: soc_posts)
+ *   - antojadosmx/docs/feed.md (Sección 5: SPs Soc)
  *   - postsResolver.js, postsMapper.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

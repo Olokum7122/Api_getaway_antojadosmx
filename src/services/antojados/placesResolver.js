@@ -19,7 +19,7 @@
  *   antojados_core.auth_identities   → JOIN para autor info
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  *   - placesMapper.js, places.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

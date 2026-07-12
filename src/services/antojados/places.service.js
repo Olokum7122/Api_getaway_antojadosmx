@@ -16,7 +16,7 @@
  *   getPlacePosts, getPlaceByPublisher, getPlaceRatingsSummary
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
+ *   - antojadosmx/docs/feed.md
  *   - placesResolver.js, placesMapper.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

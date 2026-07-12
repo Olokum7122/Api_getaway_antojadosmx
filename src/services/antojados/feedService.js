@@ -3,20 +3,25 @@
 /**
  * feedService.js — Servicio de feed unificado para AntojadosMX
  *
- * DOMINIO:      AntojadosMX — Feed de contenido (biz_posts + soc_posts)
- * RESPONSABLE:  Servir el feed unificado con filtro geo por city_code/zone_code,
- *               por canal, scoring y cursor-based pagination
+ * ══════════════════════════════════════════════════════════════════════════════
+ * DOMINIO:      AntojadosMX — API Gateway (Server-side)
+ * RESPONSABLE:  Servir el feed unificado vía SP feed_get_feed.
+ *               Reemplazó queries directas por EXEC SP (ver 7.2.6-D).
  *
- * CAMBIOS v2:
- *   - El filtro geo usa p.city_code y p.zone_code directamente
- *     (columnas agregadas vía migration 18_alter_posts_add_geo_columns.sql)
- *   - Se eliminó JOIN a biz_tenants, ya no es necesario
- *   - Soporta scope_level = 'zona' filtrando por zone_code
- *   - Aplica filtro geo también a soc_posts (tienen city_code/zone_code propios)
+ * PROHIBICIONES (7.2.6 §I.6):
+ *   ❌ Consultar SQL directo — toda consulta de feed debe pasar por
+ *      antojados_core.feed_get_feed SP.
+ *
+ * CAMBIOS v3:
+ *   - Migrado a antojados_core.feed_get_feed SP (sp_feed_get_feed.sql)
+ *   - Eliminadas queries directas a biz_posts/soc_posts
+ *   - Eliminado authorJoin/authorSelect (lo maneja el SP)
+ *   - Eliminado bizExtra (lo maneja el SP)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11: Feed Service)
- *   - apps-antojados/docs/feed.md (Sección 11.2: Filtro geo por scope_level)
+ *   - antojadosmx/sql/antojados-core/sp_feed_get_feed.sql
+ *   - PLAN_REESTRUCTURACION_CONSUMO.md §7.2.6-D
+ * ══════════════════════════════════════════════════════════════════════════════
  */
 
 const { getPool, sql } = require('./_shared');

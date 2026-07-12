@@ -6,25 +6,36 @@
  * DOMINIO:      AntojadosMX — API Gateway
  * RESPONSABLE:  Configuración principal del servidor Express.
  *               Monta middlewares globales (CORS, JSON, proxies),
- *               routers de módulos (antojados, config, analytics, etc.),
- *               y documentación Swagger/OpenAPI.
+ *               routers del dominio Antojados, y documentación Swagger/OpenAPI.
  *
  * PROXIES CONFIGURADOS:
- *   /api/media/*       → Media Engine V3 (puerto 4100)
- *   /api/v1/explorer/* → Explorer API (puerto 4101)
+ *   /api/media/*            → Media Engine V3 (puerto 4100)
+ *   /api/v1/explorer/*      → Explorer API (puerto 4101)
+ *   /api/v1/antojados/gt/*  → GT API (puerto 4010) — transversal
+ *   /api/v1/config/*        → GT API (puerto 4010)
+ *   /api/v1/solutions/*     → GT API (puerto 4010)
+ *   /api/v1/services/*      → GT API (puerto 4010)
+ *   /api/v1/planning/*      → GT API (puerto 4010)
+ *   /api/v1/finance/*       → GT API (puerto 4010)
+ *   /api/v1/analytics/*     → GT API (puerto 4010)
  *
- * SUB-ROUTERS MONTADOS:
- *   /api/v1/config      → configRouter
- *   /api/v1/solutions   → solutionsRouter
- *   /api/v1/services    → servicesRouter
- *   /api/v1/planning    → planningRouter
- *   /api/v1/finance     → financeRouter
- *   /api/v1/analytics   → analyticsRouter
- *   /api/v1/antojados   → antojadosRouter
+ * SUB-ROUTERS MONTADOS (solo dominio Antojados):
+ *   /api/v1/antojados       → antojadosRouter
+ *
+ * ARQUITECTURA:
+ *   Vertical:   UI → Antojados API → SQL (antojados_core.*)
+ *   Transversal: Antojados API → [proxy] → GT API (:4010) → SQL (dorado.*)
+ *               Antojados API → [proxy] → Media Engine (:4100) → SQL (me.*)
+ *               Antojados API → [proxy] → Explorer API (:4101) → SQL (dorado.*)
+ *
+ * NO HACE:
+ *   - No contiene lógica de negocio de GT (todo se delega vía proxy)
+ *   - No escribe en tablas dorado.* (lo hace GT API)
+ *   - No procesa multimedia (lo hace Media Engine)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md
- *   - docs/feed.auditoria.progreso.md
+ *   - antojadosmx/docs/feed.md
+ *   - PLAN_REESTRUCTURACION_CONSUMO.md
  * ══════════════════════════════════════════════════════════════════════════════
  */
 require('dotenv').config();
@@ -37,17 +48,13 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const { connectAll } = require('./db');
 
 const healthRouter       = require('./routes/health');
-const configRouter       = require('./routes/v1/config');
-const solutionsRouter    = require('./routes/v1/solutions');
-const servicesRouter     = require('./routes/v1/services');
-const planningRouter     = require('./routes/v1/planning');
-const financeRouter      = require('./routes/v1/finance');
-const analyticsRouter    = require('./routes/v1/analytics');
 const antojadosRouter    = require('./routes/v1/antojados');
-const zonadRouter        = require('./routes/v1/zonad');
 const app = express();
 
-// CORS — permite peticiones desde WebViews (Capacitor/Android/Web) y navegadores
+// ─── GT Base URL ──────────────────────────────────────────────────────
+const GT_API_URL = process.env.GT_API_URL || 'http://localhost:4010';
+
+// ─── CORS ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
@@ -61,9 +68,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Media Engine Proxy ──
-// Redirige /api/media/* al Media Engine V3 (puerto 4100).
-// NOTA: OPTIONS debe responderse antes del proxy para que CORS funcione
+// ── Media Engine Proxy (NUNCA consumido por UI directo) ──────────────
 const MEDIA_ENGINE_URL = process.env.MEDIA_ENGINE_URL || 'http://localhost:4100';
 app.options('/api/media/*', (req, res) => {
   const origin = req.headers.origin || '*';
@@ -100,8 +105,7 @@ app.use(
   }),
 );
 
-// ── Explorer API Proxy ──
-// Redirige /api/v1/explorer/* al Explorer API (puerto 4101).
+// ── Explorer API Proxy ───────────────────────────────────────────────
 const EXPLORER_API_URL = process.env.EXPLORER_API_URL || 'http://localhost:4101';
 app.use(
   '/api/v1/explorer',
@@ -130,6 +134,47 @@ app.use(
   }),
 );
 
+// ── GT API Proxy (transversal: Antojados API → GT API) ──────────────
+// V4 resuelta: GT ya no se monta localmente, se delega a GT API.
+// Los módulos GT (config, solutions, services, planning, finance, analytics)
+// corren en su propio proceso Express independiente (:4010).
+// V5 resuelta: El frontend sigue consumiendo /api/v1/antojados/gt/*
+// pero ahora este Gateway proxea a GT API en vez de resolver localmente.
+function createGtProxy() {
+  return createProxyMiddleware({
+    target: GT_API_URL,
+    changeOrigin: true,
+    on: {
+      proxyReq: (_proxyReq, req) => {
+        console.log(`[gt-proxy] ${req.method} ${req.path} → ${GT_API_URL}`);
+      },
+      proxyRes: (proxyRes, req) => {
+        const origin = req.headers.origin || '*';
+        proxyRes.headers['Access-Control-Allow-Origin'] = origin;
+        proxyRes.headers['Vary'] = 'Origin';
+        console.log(`[gt-proxy] ${req.method} ${req.path} ← ${proxyRes.statusCode}`);
+      },
+      error: (err, req, res) => {
+        console.error(`[gt-proxy] Error: ${err.message}`);
+        res.status(502).json({
+          error: 'gt_api_unreachable',
+          message: 'El servicio GT no está disponible.',
+        });
+      },
+    },
+  });
+}
+
+// Módulos GT → proxy a GT API (:4010)
+app.use('/api/v1/config',      createGtProxy());
+app.use('/api/v1/solutions',   createGtProxy());
+app.use('/api/v1/services',    createGtProxy());
+app.use('/api/v1/planning',    createGtProxy());
+app.use('/api/v1/finance',     createGtProxy());
+app.use('/api/v1/analytics',   createGtProxy());
+app.use('/api/v1/antojados/zonad', createGtProxy());
+
+// ── JSON parser ──────────────────────────────────────────────────────
 app.use(express.json({ limit: '220mb' }));
 
 app.use((err, req, res, next) => {
@@ -151,18 +196,11 @@ const downloadsDir = path.join(__dirname, '..', 'downloads');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 app.use('/downloads', express.static(downloadsDir));
 
-// Health (sin versión para facilidad de monitoreo)
+// Health
 app.use('/health', healthRouter);
 
-// Módulos GT bajo /api/v1
-app.use('/api/v1/config',    configRouter);
-app.use('/api/v1/solutions', solutionsRouter);
-app.use('/api/v1/services',  servicesRouter);
-app.use('/api/v1/planning',  planningRouter);
-app.use('/api/v1/finance',   financeRouter);
-app.use('/api/v1/analytics', analyticsRouter);
+// Router único del dominio Antojados (vertical)
 app.use('/api/v1/antojados', antojadosRouter);
-app.use('/api/v1/antojados/zonad', zonadRouter);
 
 // Swagger / OpenAPI
 try {

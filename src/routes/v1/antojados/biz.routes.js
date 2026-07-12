@@ -33,8 +33,8 @@
  *   Ver docs/feed.auditoria.md (Deuda #2)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 5: Interacciones Biz)
- *   - apps-antojados/docs/feed.auditoria.md (Deuda #2)
+ *   - antojadosmx/docs/feed.md (Sección 5: Interacciones Biz)
+ *   - antojadosmx/docs/feed.auditoria.md (Deuda #2)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 const { Router } = require('express');

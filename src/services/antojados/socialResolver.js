@@ -21,7 +21,7 @@
  *   antojados_core.soc_places       → JOIN para saves feed
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 5)
+ *   - antojadosmx/docs/feed.md (Sección 5)
  *   - socialMapper.js, social.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */

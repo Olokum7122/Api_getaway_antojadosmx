@@ -24,7 +24,7 @@
  *   biz.service         → biz_posts (§1, §2, §5)
  *
  * REFERENCIAS:
- *   - apps-antojados/docs/feed.md (Sección 11: Feed Service)
+ *   - antojadosmx/docs/feed.md (Sección 11: Feed Service)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 
