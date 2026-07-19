@@ -53,6 +53,7 @@ function _parsePopular(val) {
  * Incluye user_id y biz_post_id para filtros específicos.
  */
 function _parseFeedParams(query) {
+  const ownerId = query.owner_id || query.sponsor_id || query.user_id || null;
   return {
     city_code: query.city_code || null,
     scope_level: query.scope_level || 'ciudad',
@@ -61,6 +62,8 @@ function _parseFeedParams(query) {
     popular: _parsePopular(query.popular),
     userId: query.user_id || null,
     user_id: query.user_id || null,
+    owner_id: ownerId,
+    sponsor_id: query.sponsor_id || null,
     biz_post_id: query.biz_post_id || null,
     feed_type: query.feed_type || null,
   };

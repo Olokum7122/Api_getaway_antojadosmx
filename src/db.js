@@ -40,9 +40,10 @@ function poolConfig(server, port, database, user, password, trustCert) {
     database,
     user,
     password,
-    options: {
+        options: {
       encrypt: process.env.GT_APP_ENCRYPT === 'true',
       trustServerCertificate: trustCert === 'true' || trustCert === true,
+      enableQuotedIdentifier: true,
     },
     pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
   };
@@ -119,4 +120,3 @@ function getPool(name) {
 }
 
 module.exports = { connectAll, getPool, sql };
-

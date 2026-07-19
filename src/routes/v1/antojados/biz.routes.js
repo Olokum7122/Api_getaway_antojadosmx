@@ -44,28 +44,37 @@ const { parsePage, send } = require('./_helpers');
 const router = Router();
 
 // POST /api/v1/antojados/biz/posts
-// Body: { sponsor_id, channel, feed_type?, city_code?, zone_code?, media_url?, doc_json?, asset_id? }
+// Body: { sponsor_id, channel, feed_type?, badge_id?, city_code?, zone_code?, media_url?, media_gallery?, campos_json?, asset_id? }
 // NOTA: Solo los campos de biz_posts según feed.md. NO title, feed_type, user_id, etc.
 router.post('/biz/posts', (req, res) => {
-  const { sponsor_id, channel, feed_type, city_code, zone_code, media_url, doc_json, asset_id } = req.body;
+  const { sponsor_id, channel, feed_type, badge_id, city_code, zone_code, media_url, media_gallery, campos_json, doc_json, asset_id } = req.body;
   if (!sponsor_id)
     return res.status(400).json({ error: 'sponsor_id es requerido' });
   if (!channel)
     return res.status(400).json({ error: 'channel es requerido' });
+  if (!feed_type)
+    return res.status(400).json({ error: 'feed_type es requerido' });
+  if (!badge_id)
+    return res.status(400).json({ error: 'badge_id es requerido' });
 
   const normalizedChannel = String(channel).trim().toLowerCase();
   if (!['vas_ir', 'arre'].includes(normalizedChannel))
     return res.status(400).json({ error: `channel sponsor invalido: ${channel}. Válidos: vas_ir, arre` });
+  const normalizedFeedType = String(feed_type).trim().toLowerCase();
+  if (normalizedChannel === 'arre' && normalizedFeedType !== 'publicity')
+    return res.status(400).json({ error: 'arre solo acepta feed_type publicity' });
 
   // Solo pasar campos normalizados al resolver (feed.md)
   const payload = {
     sponsor_id,
     channel: normalizedChannel,
-    feed_type: feed_type || 'general',
+    feed_type: normalizedFeedType,
+    badge_id,
     city_code: city_code || null,
     zone_code: zone_code || null,
     media_url: media_url || null,
-    doc_json: doc_json || null,
+    media_gallery: Array.isArray(media_gallery) ? media_gallery : null,
+    campos_json: campos_json || doc_json || null,
     asset_id: asset_id || null,
   };
 
@@ -78,7 +87,7 @@ router.post('/biz/posts', (req, res) => {
 router.get('/biz/posts', (req, res) => {
   const { sponsor_id, channel, media_url_invalid } = req.query;
   const normalizedChannel = channel ? String(channel).trim().toLowerCase() : null;
-  
+
   // Permitir listar posts corruptos para auditoría sin sponsor_id ni channel
   const isAudit = media_url_invalid === 'true';
   if (!sponsor_id && !normalizedChannel && !isAudit) {
@@ -87,7 +96,7 @@ router.get('/biz/posts', (req, res) => {
   if (normalizedChannel && !['vas_ir', 'arre'].includes(normalizedChannel)) {
     return res.status(400).json({ error: `channel sponsor invalido: ${channel}` });
   }
-  
+
   const { page, limit, offset } = parsePage(req.query);
   send(res, svc.listBizPosts({
     sponsor_id: isAudit ? null : sponsor_id,

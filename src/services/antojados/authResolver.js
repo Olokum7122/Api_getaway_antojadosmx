@@ -247,7 +247,7 @@ async function loginUser({ email_hash, login_identifier, password_secret_ref }) 
     .input('loginIdentifier', sql.NVarChar(150), login_identifier ? String(login_identifier).trim().toLowerCase() : null)
     .input('passwordSecretRef', sql.NVarChar(200), password_secret_ref)
     .query(`
-      SELECT user_id, display_name, username, id,
+      SELECT user_id, display_name, username,
              avatar_url, bio,
              social_account_role_code, collaboration_type_code,
              corp_instance_id, program_instance_id, commission_profile_code,

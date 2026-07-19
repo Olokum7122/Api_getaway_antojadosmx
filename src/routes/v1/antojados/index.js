@@ -30,21 +30,21 @@
  *   equipo.routes      → equipo de trabajo
  *   instancias.routes  → instancias de negocio
  *
- * RUTAS GT (proxy → GT API independiente :4010):
- *   gt-proxy.routes    → proxy GT API
- *   gt-tenants.routes  → fallback GT
- *   gt-efirma.routes   → fallback GT
- *   gt-dimensions.routes → fallback GT
+ * RUTAS GT locales (gobierno Antojados):
+ *   gt-tenants.routes  → tenants/expediente sponsor
+ *   gt-efirma.routes   → eFirma sponsor
+ *   gt-dimensions.routes → catálogo dimensions/sub-dimensions Antojados
+ *   gt-templates.routes → plantillas DEFAULT_USER/DEFAULT_SPONSOR
+ *   gt-checked.routes → locations materializadas por instancia
  *   gt-moderation.routes → moderación social (app-facing)
  *   gt-notifications.routes → notificaciones (app-facing)
+ *   gt-proxy.routes    → proxy GT API sólo para rutas transversales restantes
  *
  * RUTAS ELIMINADAS (Explorer legacy — no forman parte del feed):
  *   publications.routes     → 🗑️ ELIMINADO
  *   packages-draft.routes   → 🗑️ ELIMINADO
  *   templates.routes        → 🗑️ ELIMINADO
- *   gt-cascades.routes      → 🗑️ ELIMINADO
  *   gt-ops.routes           → 🗑️ ELIMINADO
- *   gt-templates.routes     → 🗑️ ELIMINADO
  *   gt-tiles.routes         → 🗑️ ELIMINADO
  *
  * REFERENCIAS:
@@ -73,12 +73,16 @@ router.use(require('./biz.routes'));
 router.use(require('./equipo.routes'));
 router.use(require('./instancias.routes'));
 
-// ─── GT (proxy → GT API :4010) ─────────────────────────────────────
-router.use(require('./gt-proxy.routes'));
+// ─── GT local (dimensiones/plantillas/locations propias de Antojados) ───
 router.use(require('./gt-tenants.routes'));
 router.use(require('./gt-efirma.routes'));
 router.use(require('./gt-dimensions.routes'));
+router.use(require('./gt-templates.routes'));
+router.use(require('./gt-checked.routes'));
 router.use(require('./gt-moderation.routes'));
 router.use(require('./gt-notifications.routes'));
+
+// ─── GT proxy (:4010) para rutas transversales no resueltas localmente ───
+router.use(require('./gt-proxy.routes'));
 
 module.exports = router;

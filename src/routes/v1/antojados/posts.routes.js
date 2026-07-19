@@ -53,9 +53,11 @@ router.get('/posts', (req, res) => {
 // Modelo §3: user_id, channel, feed_type, media_url, doc_json
 // §7.1: post_id generado por SP (LOWER(NEWID())), no enviado por cliente
 router.post('/posts', (req, res) => {
-  const { user_id, channel } = req.body;
+  const { user_id, channel, badge_id } = req.body;
   if (!user_id)
     return res.status(400).json({ error: 'user_id es requerido' });
+  if (!badge_id)
+    return res.status(400).json({ error: 'badge_id es requerido' });
   const allowedChannels = new Set(['pachanga', 'neta', 'barrio', 'que_pex', 'desma']);
   const normalizedChannel = String(channel || '').trim().toLowerCase();
   if (!normalizedChannel || !allowedChannels.has(normalizedChannel)) {
@@ -134,4 +136,3 @@ router.get('/posts/:post_id/interactions-summary', (req, res) => {
 });
 
 module.exports = router;
-

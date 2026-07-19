@@ -50,6 +50,8 @@ async function getFeed({
   popular,
   userId,
   user_id,
+  owner_id,
+  sponsor_id,
   biz_post_id,
   feed_type,
 } = {}) {
@@ -60,131 +62,32 @@ async function getFeed({
   const channels = scopeConfig.channels;
   const limitNum = Math.min(Math.max(1, limit || DEFAULT_LIMIT), MAX_LIMIT);
   const takeExtra = limitNum + 1;
-  const skipGeo = !scope_level || SCOPE_LEVEL_SKIP_GEO.has(scope_level);
 
-  const idColumn = type === 'biz' ? 'biz_post_id' : 'post_id';
-  const ownerColumn = type === 'biz' ? 'sponsor_id' : 'user_id';
-  const interactionTable = type === 'biz' ? 'biz_post_interactions' : 'soc_post_interactions';
-  const interactionFkColumn = type === 'biz' ? 'biz_post_id' : 'post_id';
+  // Usar el primer canal para el SP (el SP maneja internamente channel IN para pachanga)
+  const channel = channels[0];
 
   const cursorObj = _decodeCursor(cursor);
-  const cursorWhere = cursorObj
-    ? `AND (p.created_at < @cursorCreatedAt
-          OR (p.created_at = @cursorCreatedAt AND p.${idColumn} < @cursorPostId))`
-    : '';
 
-  const orderClause = popular
-    ? `ORDER BY p.engagement_score DESC, p.created_at DESC, p.${idColumn} DESC`
-    : `ORDER BY p.created_at DESC, p.${idColumn} DESC`;
-
-  let geoWhere = '';
-  let needsCityCode = false;
-  let needsZoneCode = false;
-
-  if (!skipGeo) {
-    if (scope_level === 'ciudad' && city_code && String(city_code).trim()) {
-      geoWhere = 'AND p.city_code = @cityCode';
-      needsCityCode = true;
-    } else if (scope_level === 'zona' && zone_code && String(zone_code).trim()) {
-      geoWhere = 'AND p.zone_code = @zoneCode';
-      needsZoneCode = true;
-    }
-  }
-
-  const hasOwnerFilter = !!(user_id && String(user_id).trim());
-  const hasIdFilter = !!(biz_post_id && String(biz_post_id).trim());
-  const ownerWhere = hasOwnerFilter ? `AND p.${ownerColumn} = @ownerId` : '';
-  const idWhere = hasIdFilter ? `AND p.${idColumn} = @postId` : '';
-
-  const hasLikedSelect = userId
-    ? `, CASE WHEN EXISTS (
-        SELECT 1 FROM antojados_core.${interactionTable} i
-        WHERE i.${interactionFkColumn} = p.${idColumn}
-          AND i.user_id = @userIdForLike
-          AND i.interaction_type = 'like_created'
-      ) THEN 1 ELSE 0 END AS has_liked`
-    : ', 0 AS has_liked';
-
-  const authorSelect = type === 'soc'
-    ? `, ai.display_name AS author_display_name, ai.avatar_url AS author_avatar_url`
-    : '';
-
-  const authorJoin = type === 'soc'
-    ? `LEFT JOIN antojados_core.auth_identities ai ON ai.user_id = p.user_id`
-    : '';
-
-  const selectColumns = `
-    p.${idColumn} AS id,
-    @type AS type,
-    p.channel,
-    p.${ownerColumn} AS owner_id,
-    p.media_url,
-    p.doc_json,
-    p.views_count,
-    p.likes_count,
-    p.comments_count,
-    p.shares_count,
-    p.engagement_score,
-    p.status,
-    p.created_at
-    ${hasLikedSelect}
-    ${authorSelect}
-  `;
-
-  const bizExtra = type === 'biz'
-    ? ', p.cta_clicks_count, p.taps_whatsapp_count, p.taps_maps_count'
-    : '';
-
-  const channelPlaceholders = channels.map((_, i) => `@ch${i}`).join(', ');
-  const query = `
-    SELECT TOP (@limit) ${selectColumns} ${bizExtra}
-    FROM antojados_core.${scopeConfig.table} p
-    ${authorJoin}
-    WHERE p.channel IN (${channelPlaceholders})
-      AND p.status = 'active'
-      AND p.media_url IS NOT NULL
-      AND p.media_url != ''
-      ${geoWhere}
-      ${ownerWhere}
-      ${idWhere}
-      ${cursorWhere}
-    ${orderClause}
-  `;
-
-  const request = (await getPool('antojados')).request()
+  const req = (await getPool('antojados')).request()
+    .input('channel', sql.NVarChar(30), channel)
     .input('limit', sql.Int, takeExtra)
-    .input('type', sql.NVarChar(10), type);
+    .input('scope_level', sql.NVarChar(20), scope_level || 'mexico');
+
+  if (city_code) req.input('city_code', sql.NVarChar(20), city_code);
+  if (zone_code) req.input('zone_code', sql.NVarChar(20), zone_code);
 
   if (cursorObj) {
-    request.input('cursorCreatedAt', sql.DateTime2(3), cursorObj.created_at);
-    request.input('cursorPostId', sql.NVarChar(64), cursorObj.post_id);
+    req.input('cursor_created_at', sql.DateTime2(3), cursorObj.created_at);
+    req.input('cursor_post_id', sql.NVarChar(64), cursorObj.post_id);
   }
 
-  if (needsCityCode) {
-    request.input('cityCode', sql.NVarChar(20), city_code);
-  }
+  if (userId) req.input('user_id', sql.NVarChar(64), userId);
+  const ownerId = owner_id || sponsor_id || user_id;
+  if (ownerId) req.input('owner_id', sql.NVarChar(64), ownerId);
+  if (biz_post_id) req.input('post_id', sql.NVarChar(64), biz_post_id);
+  if (popular) req.input('popular', sql.Bit, 1);
 
-  if (needsZoneCode) {
-    request.input('zoneCode', sql.NVarChar(20), zone_code);
-  }
-
-  if (userId) {
-    request.input('userIdForLike', sql.NVarChar(64), userId);
-  }
-
-  if (hasOwnerFilter) {
-    request.input('ownerId', sql.NVarChar(64), user_id);
-  }
-
-  if (hasIdFilter) {
-    request.input('postId', sql.NVarChar(64), biz_post_id);
-  }
-
-  channels.forEach((ch, i) => {
-    request.input(`ch${i}`, sql.NVarChar(30), ch);
-  });
-
-  const result = await request.query(query);
+  const result = await req.execute('antojados_core.feed_get_feed');
   const rows = result.recordset;
 
   const hasMore = rows.length > limitNum;
@@ -193,6 +96,8 @@ async function getFeed({
   const nextCursor = data.length > 0
     ? _encodeCursor({ created_at: data[data.length - 1].created_at, post_id: data[data.length - 1].id })
     : null;
+
+  const geoFilterApplied = !!(city_code || zone_code);
 
   return {
     data,
@@ -206,7 +111,7 @@ async function getFeed({
       zone_code: zone_code || null,
       feed_scope,
       has_more: hasMore,
-      geo_filter_applied: needsCityCode || needsZoneCode,
+      geo_filter_applied: geoFilterApplied,
     },
   };
 }

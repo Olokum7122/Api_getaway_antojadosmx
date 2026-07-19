@@ -60,56 +60,72 @@ async function getInstanceCascade(instanceId) {
   const pool = getPool('antojados');
   const instance = await getInstance(instanceId);
   if (!instance) return null;
+  const scopeType = instance.instance_type || INSTANCE_TYPE.USER;
+  const templateCode = scopeType === INSTANCE_TYPE.SPONSOR ? 'DEFAULT_SPONSOR' : 'DEFAULT_USER';
 
   const dimensionResult = await pool.request()
     .input('instanceId', sql.NVarChar(64), instanceId)
+    .input('templateCode', sql.NVarChar(100), templateCode)
+    .input('scopeType', sql.NVarChar(20), scopeType)
     .query(`
       SELECT
-        dl.location_id,
-        dl.instance_id,
-        dl.root_location_id,
-        dl.parent_location_id,
-        dl.dimension_id,
-        dl.node_kind,
-        dl.node_level,
-        dl.code,
-        dl.label,
-        dl.module_code,
-        dl.area_code,
-        dl.component_code,
-        dl.visible,
-        dl.enabled,
-        dl.meta_json,
-        dl.sort_order,
-        dl.is_leaf,
-        dl.materialized_at,
-        dl.updated_at
-      FROM antojados_core.sys_dimension_location dl
-      WHERE dl.instance_id = @instanceId
-      ORDER BY dl.node_level ASC, dl.sort_order ASC, dl.code ASC
+        COALESCE(c.checked_location_id, t.template_location_id) AS location_id,
+        @instanceId AS instance_id,
+        t.root_dimension_id AS root_location_id,
+        t.parent_dimension_id AS parent_location_id,
+        t.dimension_id,
+        t.node_kind,
+        t.node_level,
+        t.code,
+        t.label,
+        t.module_code,
+        t.area_code,
+        t.component_code,
+        CAST(COALESCE(c.visible_override, t.visible, c.is_checked, 0) AS bit) AS visible,
+        CAST(COALESCE(c.enabled_override, t.enabled, c.is_checked, 0) AS bit) AS enabled,
+        t.meta_json,
+        t.sort_order,
+        t.is_leaf,
+        c.created_at AS materialized_at,
+        COALESCE(c.updated_at, t.updated_at) AS updated_at
+      FROM antojados_core.sys_dimension_location_template t
+      LEFT JOIN antojados_core.sys_dimension_location_checked c
+        ON c.template_location_id = t.template_location_id
+       AND c.instance_id = @instanceId
+      WHERE t.template_code = @templateCode
+        AND t.scope_type = @scopeType
+        AND t.is_active = 1
+      ORDER BY t.node_level ASC, t.sort_order ASC, t.code ASC
     `);
 
   const subDimensionResult = await pool.request()
     .input('instanceId', sql.NVarChar(64), instanceId)
+    .input('templateCode', sql.NVarChar(100), templateCode)
+    .input('scopeType', sql.NVarChar(20), scopeType)
     .query(`
       SELECT
-        sdl.id,
-        sdl.instance_id,
-        sdl.root_location_id,
-        sdl.sub_dimension_id,
+        COALESCE(c.checked_sub_location_id, t.template_sub_location_id) AS id,
+        @instanceId AS instance_id,
+        t.root_dimension_id AS root_location_id,
+        t.sub_dimension_id,
         sd.sub_code,
         sd.sub_name,
         sd.sub_type,
-        sdl.visible,
-        sdl.enabled,
-        sdl.sort_order,
-        sdl.materialized_at,
-        sdl.updated_at
-      FROM antojados_core.sys_sub_dimension_location sdl
-      INNER JOIN antojados_core.sys_sub_dimension sd
-        ON sd.sub_dimension_id = sdl.sub_dimension_id
-      WHERE sdl.instance_id = @instanceId
-      ORDER BY sdl.sort_order ASC, sd.sub_code ASC
+        CAST(COALESCE(c.visible_override, t.visible, c.is_checked, 0) AS bit) AS visible,
+        CAST(COALESCE(c.enabled_override, t.enabled, c.is_checked, 0) AS bit) AS enabled,
+        t.sort_order,
+        c.created_at AS materialized_at,
+        COALESCE(c.updated_at, t.updated_at) AS updated_at
+      FROM antojados_core.sys_sub_dimension_location_template t
+      LEFT JOIN antojados_core.sys_sub_dimension_location_checked c
+        ON c.template_sub_location_id = t.template_sub_location_id
+       AND c.instance_id = @instanceId
+      LEFT JOIN antojados_core.sys_sub_dimension sd
+        ON sd.sub_dimension_id = t.sub_dimension_id
+      WHERE t.template_code = @templateCode
+        AND t.scope_type = @scopeType
+        AND t.is_active = 1
+      ORDER BY t.sort_order ASC, sd.sub_code ASC
     `);
 
   return {
@@ -269,15 +285,17 @@ async function rebuildInstanceCascade(instanceId) {
   if (!instanceId) throw Object.assign(new Error('instanceId requerido'), { status: 400 });
 
   const pool = getPool('antojados');
+  const instance = await getInstance(instanceId);
+  if (!instance) return null;
 
   await pool.request()
     .input('instance_id', sql.NVarChar(64), instanceId)
-    .input('instance_type', sql.NVarChar(20), 'sponsor')
+    .input('instance_type', sql.NVarChar(20), instance.instance_type || INSTANCE_TYPE.USER)
     .execute('antojados_core.sp_sys_dimension_location_materialize');
 
   await pool.request()
     .input('instance_id', sql.NVarChar(64), instanceId)
-    .input('instance_type', sql.NVarChar(20), 'sponsor')
+    .input('instance_type', sql.NVarChar(20), instance.instance_type || INSTANCE_TYPE.USER)
     .execute('antojados_core.sp_sys_sub_dimension_location_materialize');
 
   return { ok: true, instance_id: instanceId, message: 'Cascada materializada correctamente' };

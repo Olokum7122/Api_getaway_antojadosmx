@@ -39,6 +39,14 @@ router.get('/analytics/place-scores', (req, res) => {
   send(res, svc.getPlaceScores({ ...req.query, limit }).then(data => ({ data, total: data.length })));
 });
 
+// GET /api/v1/antojados/top-places — alias para analytics/place-scores
+// El frontend consume este endpoint (rankings.service.ts), retorna top lugares
+// por score con filtro geo (scope_level, scope_code, city_code)
+router.get('/top-places', (req, res) => {
+  const limit = Math.min(100, parseInt(req.query.limit || 12, 10));
+  send(res, svc.getPlaceScores({ ...req.query, limit }).then(data => ({ data, total: data.length })));
+});
+
 // GET /api/v1/antojados/analytics/user-score?user_id=&year=&month=  (V2)
 router.get('/analytics/user-score', (req, res) => {
   const { user_id } = req.query;

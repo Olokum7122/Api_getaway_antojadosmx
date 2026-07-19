@@ -56,9 +56,64 @@
 const { getPool, sql, _emitEvent } = require('./_shared');
 const engineClient = require('./engineClient');
 
-async function publishBizPost({ sponsor_id, channel, feed_type = 'general', city_code = null, zone_code = null, media_url = null, doc_json = null, asset_id = null }) {
+const SQL_REQUIRED_SET_OPTIONS = `
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+SET NUMERIC_ROUNDABORT OFF;
+`;
+
+function normalizeMediaGallery(mediaGallery, fallbackUrl, mediaType = 'photo') {
+  const source = Array.isArray(mediaGallery) ? mediaGallery : [];
+  const normalized = source
+    .map((item, index) => {
+      if (!item) return null;
+      const candidate = typeof item === 'string' ? { media_url: item } : item;
+      const mediaUrl = candidate.media_url || candidate.feed_url || candidate.full_url || candidate.url || null;
+      if (!mediaUrl) return null;
+      return {
+        media_type: candidate.media_type || mediaType,
+        media_url: mediaUrl,
+        sort_order: Number.isInteger(candidate.sort_order) ? candidate.sort_order : index,
+        asset_id: candidate.asset_id || candidate.intake_id || null,
+        thumb_url: candidate.thumb_url || candidate.media_thumbnail_url || null,
+        feed_url: candidate.feed_url || mediaUrl,
+        full_url: candidate.full_url || mediaUrl,
+      };
+    })
+    .filter(Boolean);
+  if (normalized.length === 0 && fallbackUrl) {
+    normalized.push({ media_type: mediaType, media_url: fallbackUrl, sort_order: 0, asset_id: null, thumb_url: null, feed_url: fallbackUrl, full_url: fallbackUrl });
+  }
+  return normalized;
+}
+
+async function validateBadgeId({ badge_id, grupo = 'biz', channel = null }) {
+  if (!badge_id) throw Object.assign(new Error('badge_id requerido'), { status: 400 });
+  const result = await getPool('antojados').request()
+    .input('badge_id', sql.Int, badge_id)
+    .input('grupo', sql.NVarChar(20), grupo)
+    .query(`
+      SELECT TOP 1 badge_id, badge
+      FROM antojados_core.badges
+      WHERE badge_id = @badge_id AND grupo = @grupo
+    `);
+
+  const record = result.recordset?.[0];
+  if (!record?.badge_id) throw Object.assign(new Error(`badge_id invalido para ${grupo}: ${badge_id}`), { status: 400 });
+  if (channel === 'arre' && String(record.badge || '').toUpperCase() !== 'EVENTO') {
+    throw Object.assign(new Error('arre solo acepta badge EVENTO'), { status: 400 });
+  }
+  return record.badge_id;
+}
+
+async function publishBizPost({ sponsor_id, channel, feed_type = null, badge_id = null, city_code = null, zone_code = null, media_url = null, media_gallery = null, campos_json = null, asset_id = null }) {
   if (!sponsor_id) throw Object.assign(new Error('sponsor_id requerido'), { status: 400 });
   if (!channel) throw Object.assign(new Error('channel requerido'), { status: 400 });
+  if (!feed_type) throw Object.assign(new Error('feed_type requerido'), { status: 400 });
 
   let resolvedMediaUrl = media_url;
   if (asset_id) {
@@ -67,21 +122,41 @@ async function publishBizPost({ sponsor_id, channel, feed_type = 'general', city
     resolvedMediaUrl = payload.feed_url || payload.full_url || payload.thumb_url || media_url;
     if (!resolvedMediaUrl) throw Object.assign(new Error('Media no ready'), { status: 409 });
   }
+  const resolvedBadgeId = await validateBadgeId({ badge_id, grupo: 'biz', channel });
 
   const req = getPool('antojados').request()
     .input('sponsor_id', sql.NVarChar(64), sponsor_id)
     .input('channel', sql.NVarChar(30), channel)
     .input('feed_type', sql.NVarChar(30), feed_type)
+    .input('badge_id', sql.Int, resolvedBadgeId)
     .input('media_url', sql.NVarChar(500), resolvedMediaUrl)
-    .input('doc_json', sql.NVarChar(sql.MAX), doc_json ? JSON.stringify(doc_json) : null)
+    .input('campos_json', sql.NVarChar(sql.MAX), campos_json ? JSON.stringify(campos_json) : null)
     .input('city_code', sql.NVarChar(20), city_code)
-    .input('zone_code', sql.NVarChar(20), zone_code)
-    .output('biz_post_id', sql.NVarChar(64));
+    .input('zone_code', sql.NVarChar(20), zone_code);
 
-  await req.execute('antojados_core.usp_publish_biz_post');
+  const result = await req.query(`${SQL_REQUIRED_SET_OPTIONS}
+DECLARE @out_biz_post_id NVARCHAR(64);
+EXEC antojados_core.usp_publish_biz_post
+  @sponsor_id = @sponsor_id,
+  @channel = @channel,
+  @feed_type = @feed_type,
+  @badge_id = @badge_id,
+  @city_code = @city_code,
+  @zone_code = @zone_code,
+  @media_url = @media_url,
+  @campos_json = @campos_json,
+  @biz_post_id = @out_biz_post_id OUTPUT;
+SELECT @out_biz_post_id AS biz_post_id;
+`);
+  const bizPostId = result.recordset?.[0]?.biz_post_id;
 
-  _emitEvent({ sponsor_id, biz_post_id: req.output.biz_post_id, event_type: 'biz_post_created', payload: { channel, feed_type } });
-  return { biz_post_id: req.output.biz_post_id };
+  const mediaItems = normalizeMediaGallery(media_gallery, resolvedMediaUrl);
+  for (const item of mediaItems) {
+    await attachBizPostMedia({ post_id: bizPostId, sponsor_id, ...item });
+  }
+
+  _emitEvent({ sponsor_id, biz_post_id: bizPostId, event_type: 'biz_post_created', payload: { channel, feed_type } });
+  return { biz_post_id: bizPostId };
 }
 
 async function attachBizPostMedia({ post_id, sponsor_id, media_type = 'photo', media_url, sort_order = 0, asset_id = null, thumb_url = null, feed_url = null, full_url = null }) {
@@ -99,7 +174,18 @@ async function attachBizPostMedia({ post_id, sponsor_id, media_type = 'photo', m
     .input('thumb_url', sql.NVarChar(1000), thumb_url)
     .input('feed_url', sql.NVarChar(1000), feed_url)
     .input('full_url', sql.NVarChar(1000), full_url)
-    .execute('antojados_core.sp_biz_post_media_attach');
+    .query(`${SQL_REQUIRED_SET_OPTIONS}
+EXEC antojados_core.sp_biz_post_media_attach
+  @post_id = @post_id,
+  @sponsor_id = @sponsor_id,
+  @media_type = @media_type,
+  @media_url = @media_url,
+  @sort_order = @sort_order,
+  @asset_id = @asset_id,
+  @thumb_url = @thumb_url,
+  @feed_url = @feed_url,
+  @full_url = @full_url;
+`);
 }
 
 async function uploadBizPostMedia({ post_id, sponsor_id, file_buffer, file_name, mime_type, media_type = 'photo', sort_order = 0, rights = {} }) {
@@ -120,7 +206,7 @@ async function uploadBizPostMedia({ post_id, sponsor_id, file_buffer, file_name,
 
 async function listBizPosts({ sponsor_id, channel, feed_type, limit = 20, offset = 0, media_url_invalid } = {}) {
   const isAudit = media_url_invalid === true || media_url_invalid === 'true';
-  
+
   const result = await getPool('antojados').request()
     .input('sponsorId', sql.NVarChar(64), isAudit ? null : (sponsor_id || null))
     .input('channel', sql.NVarChar(30), isAudit ? null : (channel || null))
@@ -129,7 +215,10 @@ async function listBizPosts({ sponsor_id, channel, feed_type, limit = 20, offset
     .input('offset', sql.Int, offset)
     .query(`
       SELECT bp.biz_post_id, bp.sponsor_id, bp.channel, bp.feed_type,
-             bp.media_url, bp.doc_json,
+             bp.media_url,
+             bp.badge_id, b.badge, b.color_gradient AS badge_color,
+             b.doc_json_campos AS badge_campos,
+             pc.campos_json,
              bp.views_count, bp.likes_count, bp.comments_count, bp.shares_count,
              bp.cta_clicks_count, bp.taps_whatsapp_count, bp.taps_maps_count,
              bp.engagement_score, bp.status, bp.created_at,
@@ -139,6 +228,8 @@ async function listBizPosts({ sponsor_id, channel, feed_type, limit = 20, offset
               WHERE m.post_id = bp.biz_post_id ORDER BY m.sort_order
               FOR JSON PATH) AS media_json
       FROM antojados_core.biz_posts bp
+      LEFT JOIN antojados_core.badges b ON b.badge_id = bp.badge_id
+      LEFT JOIN antojados_core.post_campos pc ON pc.post_id = bp.biz_post_id
       WHERE bp.status ${isAudit ? "IN ('active', 'archived')" : "= 'active'"}
         ${isAudit ? "AND (bp.media_url IS NULL OR bp.media_url = '' OR (bp.media_url NOT LIKE 'http://%' AND bp.media_url NOT LIKE 'https://%'))" : ''}
         AND (@sponsorId IS NULL OR bp.sponsor_id = @sponsorId)
@@ -155,7 +246,10 @@ async function getBizPost(biz_post_id) {
     .input('bizPostId', sql.NVarChar(64), biz_post_id)
     .query(`
       SELECT bp.biz_post_id, bp.sponsor_id, bp.channel, bp.feed_type,
-             bp.media_url, bp.doc_json,
+             bp.media_url,
+             bp.badge_id, b.badge, b.color_gradient AS badge_color,
+             b.doc_json_campos AS badge_campos,
+             pc.campos_json,
              bp.views_count, bp.likes_count, bp.comments_count, bp.shares_count,
              bp.cta_clicks_count, bp.taps_whatsapp_count, bp.taps_maps_count,
              bp.engagement_score, bp.status, bp.created_at,
@@ -165,6 +259,8 @@ async function getBizPost(biz_post_id) {
               WHERE m.post_id = bp.biz_post_id ORDER BY m.sort_order
               FOR JSON PATH) AS media_json
       FROM antojados_core.biz_posts bp
+      LEFT JOIN antojados_core.badges b ON b.badge_id = bp.badge_id
+      LEFT JOIN antojados_core.post_campos pc ON pc.post_id = bp.biz_post_id
       WHERE bp.biz_post_id = @bizPostId AND bp.status = 'active'
     `);
   const row = result.recordset[0];
