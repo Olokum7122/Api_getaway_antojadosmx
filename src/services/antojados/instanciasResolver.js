@@ -32,4 +32,13 @@ async function getInstanceInfo({ user_id, instance_type }) {
   return result.recordset[0] || null;
 }
 
-module.exports = { getInstanceInfo };
+async function transitarInstanciaSP({ instance_id, status }) {
+  const pool = getPool('antojados');
+  const result = await pool.request()
+    .input('instance_id', sql.NVarChar(64), instance_id)
+    .input('status', sql.NVarChar(30), status)
+    .execute('sp_sys_instancia_set_status');
+  return { affected: result.rowsAffected[0] || 0 };
+}
+
+module.exports = { getInstanceInfo, transitarInstanciaSP };
