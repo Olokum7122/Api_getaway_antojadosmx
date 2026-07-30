@@ -53,7 +53,7 @@
  * ══════════════════════════════════════════════════════════════════════════════
  */
 
-const { getPool, sql, _emitEvent } = require('./_shared');
+const { getPool, sql, fs, pathMod, _emitEvent } = require('./_shared');
 const engineClient = require('./engineClient');
 
 const SQL_REQUIRED_SET_OPTIONS = `
@@ -204,18 +204,21 @@ async function uploadBizPostMedia({ post_id, sponsor_id, file_buffer, file_name,
   return { media_id: mediaId, url: uploadResult.originalUrl };
 }
 
-async function listBizPosts({ sponsor_id, channel, feed_type, limit = 20, offset = 0, media_url_invalid } = {}) {
+async function listBizPosts({ sponsor_id, channel, feed_type, city_code, zone_code, limit = 20, offset = 0, media_url_invalid } = {}) {
   const isAudit = media_url_invalid === true || media_url_invalid === 'true';
 
   const result = await getPool('antojados').request()
     .input('sponsorId', sql.NVarChar(64), isAudit ? null : (sponsor_id || null))
     .input('channel', sql.NVarChar(30), isAudit ? null : (channel || null))
     .input('feedType', sql.NVarChar(30), feed_type || null)
+    .input('cityCode', sql.NVarChar(20), isAudit ? null : (city_code || null))
+    .input('zoneCode', sql.NVarChar(20), isAudit ? null : (zone_code || null))
     .input('limit', sql.Int, isAudit ? 200 : limit)
     .input('offset', sql.Int, offset)
     .query(`
       SELECT bp.biz_post_id, bp.sponsor_id, bp.channel, bp.feed_type,
              bp.media_url,
+             bp.city_code, bp.zone_code,
              bp.badge_id, b.badge, b.color_gradient AS badge_color,
              b.doc_json_campos AS badge_campos,
              pc.campos_json,
@@ -235,6 +238,8 @@ async function listBizPosts({ sponsor_id, channel, feed_type, limit = 20, offset
         AND (@sponsorId IS NULL OR bp.sponsor_id = @sponsorId)
         AND (@channel IS NULL OR bp.channel = @channel)
         AND (@feedType IS NULL OR bp.feed_type = @feedType)
+        AND (@cityCode IS NULL OR bp.city_code = @cityCode)
+        AND (@zoneCode IS NULL OR bp.zone_code = @zoneCode)
       ORDER BY bp.created_at DESC
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
@@ -268,35 +273,60 @@ async function getBizPost(biz_post_id) {
   return { ...row, media: row.media_json ? JSON.parse(row.media_json) : [] };
 }
 
+async function assertAuthIdentity(user_id) {
+  const normalized_user_id = String(user_id || '').trim();
+  if (!normalized_user_id) {
+    const err = new Error('user_id es requerido');
+    err.status = 400;
+    throw err;
+  }
+
+  const result = await getPool('antojados').request()
+    .input('user_id', sql.NVarChar(64), normalized_user_id)
+    .query('SELECT TOP 1 user_id FROM antojados_core.auth_identities WHERE user_id = @user_id');
+
+  if (!result.recordset[0]) {
+    const err = new Error('user_id no existe en auth_identities');
+    err.status = 400;
+    throw err;
+  }
+
+  return normalized_user_id;
+}
+
 async function likeBizPost({ biz_post_id, user_id }) {
+  const resolved_user_id = await assertAuthIdentity(user_id);
   await getPool('antojados').request()
     .input('biz_post_id', sql.NVarChar(64), biz_post_id)
-    .input('user_id', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), resolved_user_id)
     .execute('antojados_core.usp_biz_post_like');
-  _emitEvent({ biz_post_id, user_id, event_type: 'biz_post_liked' });
+  _emitEvent({ biz_post_id, user_id: resolved_user_id, event_type: 'biz_post_liked' });
   return { ok: true };
 }
 
 async function unlikeBizPost({ biz_post_id, user_id }) {
+  const resolved_user_id = await assertAuthIdentity(user_id);
   await getPool('antojados').request()
     .input('biz_post_id', sql.NVarChar(64), biz_post_id)
-    .input('user_id', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), resolved_user_id)
     .execute('antojados_core.usp_biz_post_unlike');
-  _emitEvent({ biz_post_id, user_id, event_type: 'biz_post_unliked' });
+  _emitEvent({ biz_post_id, user_id: resolved_user_id, event_type: 'biz_post_unliked' });
   return { ok: true };
 }
 
 async function commentBizPost({ biz_post_id, user_id, content_text, parent_comment_id = null, created_at_client = null }) {
-  await getPool('antojados').request()
+  const resolved_user_id = await assertAuthIdentity(user_id);
+  const result = await getPool('antojados').request()
     .input('biz_post_id', sql.NVarChar(64), biz_post_id)
-    .input('user_id', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), resolved_user_id)
     .input('interaction_type', sql.NVarChar(30), parent_comment_id ? 'reply_created' : 'comment_created')
     .input('parent_comment_id', sql.NVarChar(64), parent_comment_id)
     .input('content_text', sql.NVarChar(2000), content_text)
     .input('created_at_client', sql.DateTime2(3), created_at_client ? new Date(created_at_client) : null)
+    .output('interaction_id', sql.NVarChar(64))
     .execute('antojados_core.usp_biz_post_comment');
-  _emitEvent({ biz_post_id, user_id, event_type: 'biz_post_commented' });
-  return { ok: true };
+  _emitEvent({ biz_post_id, user_id: resolved_user_id, event_type: 'biz_post_commented' });
+  return result.output?.interaction_id || null;
 }
 
 async function viewBizPost({ biz_post_id, user_id }) {
@@ -478,6 +508,76 @@ async function setupSponsorRepresentative(instanceId, userId, { tenant_user_id, 
   } catch (e) { try { await tr.rollback(); } catch (_) {} throw e; }
 }
 
+async function _completeSponsorAccountIfReady(pool, instanceId) {
+  const context = await pool.request()
+    .input('instanceId', sql.NVarChar(64), instanceId)
+    .query(withSponsorBizColumn(`
+      SELECT TOP 1 si.instance_id, si.__SPONSOR_BIZ_COL__ AS sponsor_biz_id,
+             rep.id AS representative_tenant_user_id
+      FROM antojados_core.sys_instancia si
+      LEFT JOIN antojados_core.biz_tenant_users rep
+        ON rep.instance_id = si.instance_id
+       AND rep.is_legal_representative = 1
+       AND rep.status = 'active'
+      WHERE si.instance_id = @instanceId
+        AND si.instance_type = 'sponsor'
+    `));
+  const row = context.recordset[0] || null;
+  if (!row?.sponsor_biz_id || !row?.representative_tenant_user_id) return null;
+
+  const docs = await pool.request()
+    .input('instanceId', sql.NVarChar(64), instanceId)
+    .query(`
+      SELECT COUNT(DISTINCT doc_type) AS required_docs
+      FROM antojados_core.biz_tenant_expediente_documents
+      WHERE instance_id = @instanceId
+        AND review_status = 'pending'
+        AND doc_type IN ('constancia_fiscal', 'identificacion_oficial')
+    `);
+  if (Number(docs.recordset[0]?.required_docs || 0) < 2) return null;
+
+  await pool.request()
+    .input('tenant_id', sql.NVarChar(64), row.sponsor_biz_id)
+    .execute('antojados_core.sp_biz_tenant_seed_system_profiles');
+
+  const profile = await pool.request()
+    .input('sponsorBizId', sql.NVarChar(64), row.sponsor_biz_id)
+    .query(withSponsorBizColumn(`
+      SELECT TOP 1 id
+      FROM antojados_core.biz_tenant_profiles
+      WHERE __SPONSOR_BIZ_COL__ = @sponsorBizId
+        AND profile_type = 'admin_general'
+      ORDER BY is_system DESC, created_at
+    `));
+  const adminProfileId = profile.recordset[0]?.id || null;
+  if (!adminProfileId) return null;
+
+  await pool.request()
+    .input('instanceId', sql.NVarChar(64), instanceId)
+    .input('representativeTenantUserId', sql.NVarChar(64), row.representative_tenant_user_id)
+    .input('adminProfileId', sql.NVarChar(64), adminProfileId)
+    .query(`
+      UPDATE antojados_core.biz_tenant_users
+      SET profile_id = CASE WHEN id = @representativeTenantUserId THEN @adminProfileId ELSE profile_id END,
+          updated_at = SYSUTCDATETIME()
+      WHERE instance_id = @instanceId;
+
+      UPDATE antojados_core.biz_tenants
+      SET status = 'pending_document_review', updated_at = SYSUTCDATETIME()
+      WHERE id = (SELECT TOP 1 ${SPONSOR_BIZ_KEY} FROM antojados_core.sys_instancia WHERE instance_id = @instanceId);
+
+      UPDATE antojados_core.sys_instancia
+      SET status = 'pending_document_review', updated_at = SYSUTCDATETIME()
+      WHERE instance_id = @instanceId;
+    `);
+
+  return {
+    account_status: 'account_complete',
+    tenant_status: 'pending_document_review',
+    admin_general_tenant_user_id: row.representative_tenant_user_id,
+  };
+}
+
 async function setupSponsorBilling(instanceId, userId, { billing_email, razon_social, rfc, fiscal_address }) {
   const ctx = await _resolveSponsorContext(instanceId, userId);
   await getPool('antojados').request()
@@ -490,24 +590,58 @@ async function setupSponsorBilling(instanceId, userId, { billing_email, razon_so
   return { instance_id: ctx.instance_id, status: ctx.status };
 }
 
-async function uploadSponsorExpedienteDocument(instanceId, userId, { uploaded_by_tenant_user_id, doc_type, file_name, storage_url, mime_type, size_bytes, checksum_sha256 = null }) {
+function sanitizeFileName(value) {
+  const name = String(value || 'documento').trim().replace(/[^a-zA-Z0-9._-]+/g, '_');
+  return name || 'documento';
+}
+
+function persistExpedienteBase64({ instanceId, documentId, docType, fileName, fileBase64 }) {
+  const raw = String(fileBase64 || '').trim();
+  if (!raw) return null;
+  const normalized = raw.includes(',') ? raw.split(',').pop() : raw;
+  const buffer = Buffer.from(normalized, 'base64');
+  if (!buffer.length) throw Object.assign(new Error('file_base64 invalido'), { status: 400 });
+
+  const safeDocType = sanitizeFileName(docType);
+  const safeFileName = sanitizeFileName(fileName);
+  const relativeDir = pathMod.join('expediente', sanitizeFileName(instanceId), safeDocType);
+  const uploadsRoot = pathMod.resolve(__dirname, '..', '..', '..', 'uploads');
+  const targetDir = pathMod.join(uploadsRoot, relativeDir);
+  fs.mkdirSync(targetDir, { recursive: true });
+  const storedName = `${documentId}_${safeFileName}`;
+  fs.writeFileSync(pathMod.join(targetDir, storedName), buffer);
+  return `/uploads/${relativeDir.split(pathMod.sep).join('/')}/${storedName}`;
+}
+
+async function uploadSponsorExpedienteDocument(instanceId, userId, { uploaded_by_tenant_user_id, doc_type, file_name, storage_url, file_base64 = null, mime_type, size_bytes, checksum_sha256 = null }) {
   const ctx = await _resolveSponsorContext(instanceId, userId);
   const normalizedDocType = String(doc_type || '').trim().toLowerCase();
   if (!ALLOWED_EXPEDIENTE_DOC_TYPES.includes(normalizedDocType)) { const err = new Error('doc_type invalido'); err.status = 400; throw err; }
 
   const documentId = require('crypto').randomUUID();
-  await getPool('antojados').request()
+  const resolvedStorageUrl = storage_url || persistExpedienteBase64({
+    instanceId: ctx.instance_id,
+    documentId,
+    docType: normalizedDocType,
+    fileName: file_name,
+    fileBase64: file_base64,
+  });
+  if (!resolvedStorageUrl) throw Object.assign(new Error('storage_url o file_base64 es requerido'), { status: 400 });
+
+  const pool = getPool('antojados');
+  await pool.request()
     .input('id', sql.NVarChar(64), documentId).input('instanceId', sql.NVarChar(64), ctx.instance_id)
     .input('sponsorBizId', sql.NVarChar(64), ctx.sponsor_biz_id)
     .input('uploadedBy', sql.NVarChar(64), uploaded_by_tenant_user_id)
     .input('docType', sql.NVarChar(60), normalizedDocType)
     .input('fileName', sql.NVarChar(400), file_name)
-    .input('storageUrl', sql.NVarChar(800), storage_url)
+    .input('storageUrl', sql.NVarChar(800), resolvedStorageUrl)
     .input('mimeType', sql.NVarChar(100), mime_type)
     .input('sizeBytes', sql.Int, Number(size_bytes))
     .input('checksum', sql.NVarChar(64), checksum_sha256)
     .query(`INSERT INTO antojados_core.biz_tenant_expediente_documents (id, instance_id, __SPONSOR_BIZ_COL__, uploaded_by_tenant_user_id, doc_type, file_name, storage_url, mime_type, size_bytes, checksum_sha256, review_status, created_at) VALUES (@id, @instanceId, @sponsorBizId, @uploadedBy, @docType, @fileName, @storageUrl, @mimeType, @sizeBytes, @checksum, 'pending', SYSUTCDATETIME())`.replace('__SPONSOR_BIZ_COL__', SPONSOR_BIZ_KEY));
-  return { id: documentId, instance_id: ctx.instance_id, uploaded_by_tenant_user_id, doc_type: normalizedDocType, file_name, storage_url, mime_type, size_bytes: Number(size_bytes), checksum_sha256, review_status: 'pending' };
+  const account_completion = await _completeSponsorAccountIfReady(pool, ctx.instance_id);
+  return { id: documentId, instance_id: ctx.instance_id, uploaded_by_tenant_user_id, doc_type: normalizedDocType, file_name, storage_url: resolvedStorageUrl, mime_type, size_bytes: Number(size_bytes), checksum_sha256, review_status: 'pending', account_completion };
 }
 
 async function listSponsorExpediente(instanceId, userId) {
@@ -515,6 +649,143 @@ async function listSponsorExpediente(instanceId, userId) {
   const result = await getPool('antojados').request().input('instanceId', sql.NVarChar(64), ctx.instance_id)
     .query('SELECT d.id, d.instance_id, d.uploaded_by_tenant_user_id, d.doc_type, d.file_name, d.storage_url, d.mime_type, d.size_bytes, d.checksum_sha256, d.review_status, d.reviewed_by, d.reviewed_at, d.created_at FROM antojados_core.biz_tenant_expediente_documents d WHERE d.instance_id = @instanceId ORDER BY d.created_at DESC');
   return result.recordset;
+}
+
+async function getSponsorRegistrationForGt(instanceId) {
+  const result = await getPool('antojados').request()
+    .input('instanceId', sql.NVarChar(64), instanceId)
+    .query(withSponsorBizColumn(`
+      SELECT TOP 1
+        si.instance_id,
+        si.status AS instance_status,
+        t.id AS tenant_id,
+        t.business_name,
+        t.biz_type,
+        t.city_code,
+        t.phone,
+        t.website,
+        t.description,
+        t.billing_email,
+        t.razon_social,
+        t.rfc,
+        t.fiscal_address,
+        t.status AS tenant_status,
+        rep.id AS representative_tenant_user_id,
+        rep.user_id AS representative_user_id,
+        rep.is_legal_representative,
+        ai.display_name AS representative_name,
+        ai.phone_e164 AS representative_phone
+      FROM antojados_core.sys_instancia si
+      INNER JOIN antojados_core.biz_tenants t ON t.id = si.__SPONSOR_BIZ_COL__
+      LEFT JOIN antojados_core.biz_tenant_users rep
+        ON rep.instance_id = si.instance_id
+       AND rep.is_legal_representative = 1
+       AND rep.status = 'active'
+      LEFT JOIN antojados_core.auth_identities ai ON ai.user_id = rep.user_id
+      WHERE si.instance_id = @instanceId
+        AND si.instance_type = 'sponsor'
+    `));
+  const registration = result.recordset[0] || null;
+  if (!registration) return null;
+
+  const docs = await getPool('antojados').request()
+    .input('instanceId', sql.NVarChar(64), instanceId)
+    .query(`
+      SELECT id, instance_id, uploaded_by_tenant_user_id, doc_type, file_name, storage_url,
+             mime_type, size_bytes, checksum_sha256, review_status, reviewed_by, reviewed_at, created_at
+      FROM antojados_core.biz_tenant_expediente_documents
+      WHERE instance_id = @instanceId
+      ORDER BY created_at DESC
+    `);
+
+  return {
+    ...registration,
+    documents: docs.recordset,
+  };
+}
+
+async function reviewSponsorRegistration(instanceId, { decision, reviewed_by = null, corrections = null } = {}) {
+  const normalizedDecision = String(decision || '').trim().toLowerCase();
+  if (!['approve', 'reject'].includes(normalizedDecision)) {
+    throw Object.assign(new Error('decision debe ser approve o reject'), { status: 400 });
+  }
+
+  const nextStatus = normalizedDecision === 'approve' ? 'pending_efirma' : 'registration_rejected';
+  const documentStatus = normalizedDecision === 'approve' ? 'approved' : 'rejected';
+  const pool = getPool('antojados');
+  const tr = new sql.Transaction(pool);
+
+  try {
+    await tr.begin();
+
+    const context = await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instanceId)
+      .query(withSponsorBizColumn(`
+        SELECT TOP 1 si.instance_id, si.__SPONSOR_BIZ_COL__ AS sponsor_biz_id, si.status
+        FROM antojados_core.sys_instancia si WITH (UPDLOCK, HOLDLOCK)
+        WHERE si.instance_id = @instanceId
+          AND si.instance_type = 'sponsor'
+      `));
+    const row = context.recordset[0] || null;
+    if (!row?.instance_id || !row?.sponsor_biz_id) {
+      throw Object.assign(new Error('Instancia sponsor no encontrada.'), { status: 404 });
+    }
+    if (!['pending_document_review', 'registration_rejected'].includes(String(row.status || ''))) {
+      throw Object.assign(new Error('La instancia no esta en estado revisable.'), { status: 409 });
+    }
+
+    const docs = await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instanceId)
+      .query(`
+        SELECT COUNT(DISTINCT doc_type) AS required_docs
+        FROM antojados_core.biz_tenant_expediente_documents
+        WHERE instance_id = @instanceId
+          AND doc_type IN ('constancia_fiscal', 'identificacion_oficial')
+      `);
+    if (Number(docs.recordset[0]?.required_docs || 0) < 2) {
+      throw Object.assign(new Error('Faltan documentos requeridos para revisar registro.'), { status: 409 });
+    }
+
+    await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instanceId)
+      .input('reviewStatus', sql.NVarChar(30), documentStatus)
+      .input('reviewedBy', sql.NVarChar(64), reviewed_by)
+      .query(`
+        UPDATE antojados_core.biz_tenant_expediente_documents
+        SET review_status = @reviewStatus,
+            reviewed_by = @reviewedBy,
+            reviewed_at = SYSUTCDATETIME()
+        WHERE instance_id = @instanceId;
+      `);
+
+    await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instanceId)
+      .input('sponsorBizId', sql.NVarChar(64), row.sponsor_biz_id)
+      .input('status', sql.NVarChar(40), nextStatus)
+      .query(`
+        UPDATE antojados_core.sys_instancia
+        SET status = @status, updated_at = SYSUTCDATETIME()
+        WHERE instance_id = @instanceId;
+
+        UPDATE antojados_core.biz_tenants
+        SET status = @status, updated_at = SYSUTCDATETIME()
+        WHERE id = @sponsorBizId;
+      `);
+
+    await tr.commit();
+    return {
+      instance_id: instanceId,
+      status: nextStatus,
+      decision: normalizedDecision,
+      corrections,
+      source_table: 'sys_instancia',
+      source_field: 'status',
+      source_status: nextStatus,
+    };
+  } catch (error) {
+    try { await tr.rollback(); } catch (rollbackError) { console.warn('reviewSponsorRegistration.rollback_failed', rollbackError); }
+    throw error;
+  }
 }
 
 async function getBizPostMedia(biz_post_id) {
@@ -559,4 +830,6 @@ module.exports = Object.assign(module.exports, {
   setupSponsorBilling,
   uploadSponsorExpedienteDocument,
   listSponsorExpediente,
+  getSponsorRegistrationForGt,
+  reviewSponsorRegistration,
 });

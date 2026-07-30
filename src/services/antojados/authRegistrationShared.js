@@ -24,18 +24,18 @@ const { getPool, sql } = require('./_shared');
 
 async function assertRegistrationAvailable({ request, user_id, email_hash }) {
   const duplicate = await request
-    .input('userId', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), user_id)
     .input('emailHash', sql.NVarChar(128), email_hash)
     .query(`
       SELECT TOP 1
         CASE
-          WHEN user_id = @userId THEN 'same_user'
+          WHEN user_id = @user_id THEN 'same_user'
           ELSE 'email_taken'
         END AS duplicate_reason
       FROM antojados_core.auth_identities
-      WHERE user_id = @userId
+      WHERE user_id = @user_id
          OR email_hash = @emailHash
-      ORDER BY CASE WHEN user_id = @userId THEN 0 ELSE 1 END
+      ORDER BY CASE WHEN user_id = @user_id THEN 0 ELSE 1 END
     `);
 
   const reason = duplicate.recordset[0]?.duplicate_reason || null;

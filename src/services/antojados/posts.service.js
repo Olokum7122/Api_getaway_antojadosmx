@@ -67,13 +67,25 @@ async function commentPost({ post_id, user_id, content_text, parent_comment_id, 
   return await postsResolver.commentSocPost({ post_id, user_id, content_text, parent_comment_id, created_at_client });
 }
 
+async function listComments(post_id, options) {
+  return await postsResolver.listSocPostComments(post_id, options);
+}
+
 async function viewPost({ post_id, user_id }) {
   return await postsResolver.viewSocPost({ post_id, user_id });
+}
+
+async function sharePost({ post_id, user_id, created_at_client }) {
+  return await postsResolver.shareSocPost({ post_id, user_id, created_at_client });
+}
+
+async function savePost({ post_id, user_id, created_at_client }) {
+  return await postsResolver.saveSocPost({ post_id, user_id, created_at_client });
 }
 
 async function getPostInteractionsSummary({ post_id, user_id }) {
   return await postsResolver.getSocPostInteractionsSummary({ post_id, user_id });
 }
 
-module.exports = { listPosts, createPost, getPost, deletePost, ratePost, likePost, unlikePost, commentPost, viewPost, getPostInteractionsSummary };
+module.exports = { listPosts, createPost, getPost, deletePost, ratePost, likePost, unlikePost, commentPost, listComments, viewPost, sharePost, savePost, getPostInteractionsSummary };
 

@@ -67,28 +67,13 @@ async function getFeed({
   const channel = channels[0];
 
   const cursorObj = _decodeCursor(cursor);
-
-  const req = (await getPool('antojados')).request()
-    .input('channel', sql.NVarChar(30), channel)
-    .input('limit', sql.Int, takeExtra)
-    .input('scope_level', sql.NVarChar(20), scope_level || 'mexico');
-
-  if (city_code) req.input('city_code', sql.NVarChar(20), city_code);
-  if (zone_code) req.input('zone_code', sql.NVarChar(20), zone_code);
-
-  if (cursorObj) {
-    req.input('cursor_created_at', sql.DateTime2(3), cursorObj.created_at);
-    req.input('cursor_post_id', sql.NVarChar(64), cursorObj.post_id);
-  }
-
-  if (userId) req.input('user_id', sql.NVarChar(64), userId);
+  const normalizedCityCode = scope_level === 'ciudad' ? await _resolveCityCode(city_code) : city_code;
+  const normalizedZoneCode = scope_level === 'zona' ? await _resolveZoneCode(zone_code) : zone_code;
   const ownerId = owner_id || sponsor_id || user_id;
-  if (ownerId) req.input('owner_id', sql.NVarChar(64), ownerId);
-  if (biz_post_id) req.input('post_id', sql.NVarChar(64), biz_post_id);
-  if (popular) req.input('popular', sql.Bit, 1);
 
-  const result = await req.execute('antojados_core.feed_get_feed');
-  const rows = result.recordset;
+  const rows = scope_level === 'zona' && normalizedZoneCode
+    ? await _fetchZoneFeedRows({ channel, takeExtra, zone_code: normalizedZoneCode, cursorObj, userId, ownerId, biz_post_id, popular })
+    : await _fetchFeedRows({ channel, takeExtra, scope_level: scope_level || 'mexico', city_code: normalizedCityCode, zone_code: normalizedZoneCode, cursorObj, userId, ownerId, biz_post_id, popular });
 
   const hasMore = rows.length > limitNum;
   const data = hasMore ? rows.slice(0, limitNum) : rows;
@@ -97,7 +82,7 @@ async function getFeed({
     ? _encodeCursor({ created_at: data[data.length - 1].created_at, post_id: data[data.length - 1].id })
     : null;
 
-  const geoFilterApplied = !!(city_code || zone_code);
+  const geoFilterApplied = !!(normalizedCityCode || normalizedZoneCode);
 
   return {
     data,
@@ -107,13 +92,124 @@ async function getFeed({
     },
     meta: {
       scope_level: scope_level || 'ciudad',
-      city_code: city_code || null,
-      zone_code: zone_code || null,
+      city_code: normalizedCityCode || null,
+      zone_code: normalizedZoneCode || null,
       feed_scope,
       has_more: hasMore,
       geo_filter_applied: geoFilterApplied,
     },
   };
+}
+
+async function _fetchZoneFeedRows({ channel, takeExtra, zone_code, cursorObj, userId, ownerId, biz_post_id, popular }) {
+  const cityCodes = await _listCityCodesForZone(zone_code);
+  if (!cityCodes.length) {
+    return _fetchFeedRows({ channel, takeExtra, scope_level: 'zona', zone_code, cursorObj, userId, ownerId, biz_post_id, popular });
+  }
+
+  const rowsByCity = await Promise.all(cityCodes.map((city_code) => _fetchFeedRows({
+    channel,
+    takeExtra,
+    scope_level: 'ciudad',
+    city_code,
+    zone_code: null,
+    cursorObj,
+    userId,
+    ownerId,
+    biz_post_id,
+    popular,
+  })));
+
+  const uniqueRows = new Map();
+  for (const row of rowsByCity.flat()) {
+    if (row?.id && !uniqueRows.has(row.id)) uniqueRows.set(row.id, row);
+  }
+
+  return Array.from(uniqueRows.values()).sort((left, right) => {
+    if (popular) {
+      const scoreDiff = Number(right.engagement_score || 0) - Number(left.engagement_score || 0);
+      if (scoreDiff) return scoreDiff;
+    }
+    const rightDate = right.created_at ? new Date(right.created_at).getTime() : 0;
+    const leftDate = left.created_at ? new Date(left.created_at).getTime() : 0;
+    if (rightDate !== leftDate) return rightDate - leftDate;
+    return String(right.id || '').localeCompare(String(left.id || ''));
+  }).slice(0, takeExtra);
+}
+
+async function _fetchFeedRows({ channel, takeExtra, scope_level, city_code, zone_code, cursorObj, userId, ownerId, biz_post_id, popular }) {
+  const req = (await getPool('antojados')).request()
+    .input('channel', sql.NVarChar(30), channel)
+    .input('limit', sql.Int, takeExtra)
+    .input('scope_level', sql.NVarChar(20), scope_level || 'mexico');
+
+  if (city_code) req.input('city_code', sql.NVarChar(60), city_code);
+  if (zone_code) req.input('zone_code', sql.NVarChar(60), zone_code);
+
+  if (cursorObj) {
+    req.input('cursor_created_at', sql.DateTime2(3), cursorObj.created_at);
+    req.input('cursor_post_id', sql.NVarChar(64), cursorObj.post_id);
+  }
+
+  if (userId) req.input('user_id', sql.NVarChar(64), userId);
+  if (ownerId) req.input('owner_id', sql.NVarChar(64), ownerId);
+  if (biz_post_id) req.input('post_id', sql.NVarChar(64), biz_post_id);
+  if (popular) req.input('popular', sql.Bit, 1);
+
+  const result = await req.execute('antojados_core.feed_get_feed');
+  return result.recordset;
+}
+
+async function _listCityCodesForZone(zoneCode) {
+  const normalized = String(zoneCode || '').trim();
+  if (!normalized) return [];
+
+  const result = await getPool('antojados').request()
+    .input('zoneCode', sql.NVarChar(64), normalized)
+    .query(`
+      SELECT DISTINCT city_code
+      FROM antojados_core.geo_scope_detection_map
+      WHERE status = 'active'
+        AND (zone_code = @zoneCode OR zone_scope_code = @zoneCode)
+        AND city_code IS NOT NULL
+      ORDER BY city_code ASC
+    `);
+
+  return result.recordset.map((row) => row.city_code).filter(Boolean);
+}
+
+async function _resolveCityCode(cityCode) {
+  const normalized = String(cityCode || '').trim();
+  if (!normalized) return null;
+
+  const result = await getPool('antojados').request()
+    .input('cityCode', sql.NVarChar(64), normalized)
+    .query(`
+      SELECT TOP 1 city_code
+      FROM antojados_core.geo_scope_detection_map
+      WHERE status = 'active'
+        AND (city_code = @cityCode OR city_scope_code = @cityCode)
+      ORDER BY priority DESC, updated_at DESC
+    `);
+
+  return result.recordset[0]?.city_code || normalized;
+}
+
+async function _resolveZoneCode(zoneCode) {
+  const normalized = String(zoneCode || '').trim();
+  if (!normalized) return null;
+
+  const result = await getPool('antojados').request()
+    .input('zoneCode', sql.NVarChar(64), normalized)
+    .query(`
+      SELECT TOP 1 zone_code
+      FROM antojados_core.geo_scope_detection_map
+      WHERE status = 'active'
+        AND (zone_code = @zoneCode OR zone_scope_code = @zoneCode)
+      ORDER BY priority DESC, updated_at DESC
+    `);
+
+  return result.recordset[0]?.zone_code || normalized;
 }
 
 async function getFeedWithMedia(params) {

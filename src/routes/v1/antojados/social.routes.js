@@ -1,22 +1,16 @@
 'use strict';
 /**
- * social.routes.js — Rutas de Interacciones Sociales
+ * social.routes.js — Rutas Sociales Fuera del Feed Rail
  *
  * ══════════════════════════════════════════════════════════════════════════════
- * DOMINIO:      AntojadosMX — Interacciones Sociales (likes, comments,
- *               follows, saves, shares)
- * RESPONSABLE:  Exponer endpoints REST para interacciones sociales
- *               sobre soc_posts y soc_places.
+ * DOMINIO:      AntojadosMX — Interacciones sociales no-feed.
+ * RESPONSABLE:  Exponer follows y saves de lugares/perfiles.
+ *
+ * Las acciones de posts/feed rail viven en:
+ *   - posts.routes.js             → soc_posts canónico
+ *   - biz.routes.js               → biz_posts canónico
  *
  * ENDPOINTS:
- *   Social (likes, comments, ratings):
- *     POST   /posts/:post_id/like         → like
- *     DELETE /posts/:post_id/like         → unlike
- *     POST   /posts/:post_id/comments     → comment
- *     POST   /posts/:post_id/ratings      → rate
- *     GET    /posts/:post_id/comments     → list comments
- *     POST   /posts/:post_id/share        → share
- *
  *   Follows:
  *     POST   /social/follows             → follow/unfollow toggle
  *     GET    /social/following/:user_id  → list following
@@ -27,10 +21,9 @@
  *     GET    /social/saves/:user_id      → list saves
  *     GET    /social/saves/:user_id/feed → saves feed
  *
- * ⚠️ NOTA: Algunos endpoints de likes/comments compiten con posts.routes.js.
- *
  * REFERENCIAS:
- *   - antojadosmx/docs/feed.md (Sección 5)
+ *   - posts.routes.js
+ *   - biz.routes.js
  *   - social.service.js
  * ══════════════════════════════════════════════════════════════════════════════
  */
@@ -39,64 +32,6 @@ const svc = require('../../../services/antojados/social.service');
 const { parsePage, send } = require('./_helpers');
 
 const router = Router();
-
-// ─── SOCIAL: likes & comments ─────────────────────────────────
-
-// POST /api/v1/antojados/posts/:post_id/like
-router.post('/posts/:post_id/like', (req, res) => {
-  const { user_id } = req.body;
-  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
-  send(res, svc.likePost(req.params.post_id, user_id, req.body)
-    .then(() => ({ post_id: req.params.post_id, user_id })), 201);
-});
-
-// DELETE /api/v1/antojados/posts/:post_id/like
-router.delete('/posts/:post_id/like', (req, res) => {
-  const { user_id } = req.body;
-  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
-  send(res, svc.unlikePost(req.params.post_id, user_id)
-    .then(() => ({ post_id: req.params.post_id })));
-});
-
-// POST /api/v1/antojados/posts/:post_id/comments
-router.post('/posts/:post_id/comments', (req, res) => {
-  const { user_id, content_text } = req.body;
-  if (!user_id || !content_text)
-    return res.status(400).json({ error: 'user_id y content_text son requeridos' });
-  if (content_text.length > 2000)
-    return res.status(400).json({ error: 'content_text excede 2000 caracteres' });
-  send(res,
-    svc.addComment({ post_id: req.params.post_id, ...req.body })
-      .then(interaction_id => ({ interaction_id, post_id: req.params.post_id })),
-    201);
-});
-
-// POST /api/v1/antojados/posts/:post_id/ratings
-router.post('/posts/:post_id/ratings', (req, res) => {
-  const { user_id, taste, price, service, cleanliness, ambience, wait_time } = req.body;
-  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
-  const dims = { taste, price, service, cleanliness, ambience, wait_time };
-  const anySet = Object.values(dims).some(v => v != null && v > 0);
-  if (!anySet) return res.status(400).json({ error: 'Al menos una dimensión debe ser > 0' });
-  send(res,
-    svc.ratePost({ post_id: req.params.post_id, user_id, ...dims })
-      .then(rating_id => ({ rating_id, post_id: req.params.post_id })),
-    201);
-});
-
-// GET /api/v1/antojados/posts/:post_id/comments
-router.get('/posts/:post_id/comments', (req, res) => {
-  const { page, limit, offset } = parsePage(req.query);
-  send(res, svc.listComments(req.params.post_id, { limit, offset }).then(data => ({ data, page, limit })));
-});
-
-// POST /api/v1/antojados/posts/:post_id/share
-router.post('/posts/:post_id/share', (req, res) => {
-  const { user_id } = req.body;
-  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
-  send(res, svc.sharePost(req.params.post_id, user_id, req.body)
-    .then(() => ({ post_id: req.params.post_id, user_id })), 201);
-});
 
 // ─── SOCIAL V2: follows ────────────────────────────────────────
 

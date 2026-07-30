@@ -31,22 +31,22 @@ async function listTenants({ limit = 50, offset = 0 } = {}) {
     .input('instanceType', sql.NVarChar(20), INSTANCE_TYPE.SPONSOR)
     .query(withSponsorBizColumn(`
       SELECT
-        t.id,
+        i.instance_id,
+        i.status,
+        i.cuenta_id,
+        i.created_at,
+        i.updated_at,
+        t.id AS tenant_id,
         t.business_name,
         t.biz_type,
         t.city_code,
         t.phone,
-        t.billing_email,
-        t.status,
-        t.id,
-        t.created_at,
-        t.updated_at,
-        i.instance_id,
-        i.status AS instance_status
-      FROM antojados_core.biz_tenants t
-      LEFT JOIN antojados_core.sys_instancia i
-        ON i.__SPONSOR_BIZ_COL__ = t.id AND i.instance_type = @instanceType
-      ORDER BY t.created_at DESC
+        t.billing_email
+      FROM antojados_core.sys_instancia i
+      LEFT JOIN antojados_core.biz_tenants t
+        ON i.__SPONSOR_BIZ_COL__ = t.id
+      WHERE i.instance_type = @instanceType
+      ORDER BY i.created_at DESC
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `));
   return result.recordset;

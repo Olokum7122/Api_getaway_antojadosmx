@@ -123,10 +123,38 @@ router.post('/posts/:post_id/comments', (req, res) => {
   }), 201);
 });
 
+// GET /api/v1/antojados/posts/:post_id/comments
+router.get('/posts/:post_id/comments', (req, res) => {
+  const { page, limit, offset } = parsePage(req.query);
+  send(res, svc.listComments(req.params.post_id, { limit, offset }).then(data => ({ data, page, limit })));
+});
+
 // POST /api/v1/antojados/posts/:post_id/view
 router.post('/posts/:post_id/view', (req, res) => {
   const { user_id } = req.body;
   send(res, svc.viewPost({ post_id: req.params.post_id, user_id: user_id || null }));
+});
+
+// POST /api/v1/antojados/posts/:post_id/share
+router.post('/posts/:post_id/share', (req, res) => {
+  const { user_id } = req.body;
+  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
+  send(res, svc.sharePost({
+    post_id: req.params.post_id,
+    user_id,
+    created_at_client: req.body.created_at_client || null,
+  }));
+});
+
+// POST /api/v1/antojados/posts/:post_id/save
+router.post('/posts/:post_id/save', (req, res) => {
+  const { user_id } = req.body;
+  if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
+  send(res, svc.savePost({
+    post_id: req.params.post_id,
+    user_id,
+    created_at_client: req.body.created_at_client || null,
+  }));
 });
 
 // GET /api/v1/antojados/posts/:post_id/interactions-summary

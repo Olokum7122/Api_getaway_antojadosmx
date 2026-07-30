@@ -45,6 +45,7 @@ const {
   mapSponsorRepresentativeResult,
   mapSponsorExpedienteDocument,
   mapSponsorExpedienteList,
+  mapContractResult,
 } = require('./bizMapper');
 
 async function createBizPost(payload) { return bizResolver.createBizPost(payload); }
@@ -77,6 +78,12 @@ async function uploadSponsorExpedienteDocument(instanceId, userId, payload) {
 async function listSponsorExpediente(instanceId, userId) {
   return mapSponsorExpedienteList(await bizResolver.listSponsorExpediente(instanceId, userId));
 }
+async function getSponsorRegistrationForGt(instanceId) {
+  return mapContractResult(await bizResolver.getSponsorRegistrationForGt(instanceId));
+}
+async function reviewSponsorRegistration(instanceId, payload) {
+  return mapContractResult(await bizResolver.reviewSponsorRegistration(instanceId, payload));
+}
 
 module.exports = {
   createBizPost,
@@ -99,4 +106,6 @@ module.exports = {
   setupSponsorBilling,
   uploadSponsorExpedienteDocument,
   listSponsorExpediente,
+  getSponsorRegistrationForGt,
+  reviewSponsorRegistration,
 };

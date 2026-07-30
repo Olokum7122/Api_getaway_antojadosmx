@@ -25,6 +25,7 @@
  * ══════════════════════════════════════════════════════════════════════════════
  */
 const { getPool, sql } = require('./_shared');
+const { randomUUID } = require('crypto');
 const SPONSOR_BIZ_KEY = 'tenant' + '_id';
 
 function withSponsorBizColumn(sqlText) {
@@ -75,6 +76,57 @@ async function _getAdminGeneralProfileId(pool, instance_id) {
       ORDER BY p.is_system DESC, p.created_at
     `));
   return profile.recordset[0]?.id || null;
+}
+
+async function _getBaseEmployeeProfileId(pool, instance_id) {
+  const profile = await pool.request()
+    .input('instanceId', sql.NVarChar(64), instance_id)
+    .query(withSponsorBizColumn(`
+      SELECT TOP 1 p.id
+      FROM antojados_core.biz_tenant_profiles p
+      JOIN antojados_core.sys_instancia si ON si.__SPONSOR_BIZ_COL__ = p.__SPONSOR_BIZ_COL__
+      WHERE si.instance_id = @instanceId
+        AND si.instance_type = 'sponsor'
+        AND p.profile_type IN ('employee', 'member', 'user', 'usuario')
+      ORDER BY
+        CASE p.profile_type
+          WHEN 'employee' THEN 0
+          WHEN 'member' THEN 1
+          WHEN 'user' THEN 2
+          WHEN 'usuario' THEN 3
+          ELSE 4
+        END,
+        p.is_system DESC,
+        p.created_at
+    `));
+  return profile.recordset[0]?.id || null;
+}
+
+async function ensureAdminChangeRequestSchema(pool) {
+  await pool.request().query(`
+    IF OBJECT_ID(N'antojados_core.biz_tenant_admin_change_requests', N'U') IS NULL
+    BEGIN
+      CREATE TABLE antojados_core.biz_tenant_admin_change_requests (
+        request_id NVARCHAR(64) NOT NULL PRIMARY KEY,
+        instance_id NVARCHAR(64) NOT NULL,
+        tenant_id NVARCHAR(64) NULL,
+        requested_by_tenant_user_id NVARCHAR(64) NOT NULL,
+        current_admin_tenant_user_id NVARCHAR(64) NOT NULL,
+        proposed_admin_tenant_user_id NVARCHAR(64) NULL,
+        status NVARCHAR(40) NOT NULL,
+        reason NVARCHAR(1000) NOT NULL,
+        credential_verified_at DATETIME2(3) NOT NULL,
+        created_at DATETIME2(3) NOT NULL CONSTRAINT DF_biz_tenant_admin_change_requests_created_at DEFAULT SYSUTCDATETIME(),
+        updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_biz_tenant_admin_change_requests_updated_at DEFAULT SYSUTCDATETIME(),
+        reviewed_by NVARCHAR(64) NULL,
+        reviewed_at DATETIME2(3) NULL,
+        decision_reason NVARCHAR(1000) NULL,
+        applied_at DATETIME2(3) NULL
+      );
+      CREATE INDEX IX_biz_tenant_admin_change_requests_instance_status
+        ON antojados_core.biz_tenant_admin_change_requests(instance_id, status, created_at DESC);
+    END
+  `);
 }
 
 async function _ensureOwnerTenantUser(pool, instance_id, owner_user_id) {
@@ -373,7 +425,8 @@ async function deleteInvitacion(id) {
   await getPool('antojados').request()
     .input('id', sql.NVarChar(64), id)
     .query(`
-      DELETE FROM antojados_core.biz_tenant_invitations
+      UPDATE antojados_core.biz_tenant_invitations
+      SET status = 'cancelled', updated_at = SYSUTCDATETIME()
       WHERE id = @id
         AND status = 'pending'
     `);
@@ -673,6 +726,199 @@ async function transferirAdminGeneral({ instance_id, nuevo_user_id }) {
   return result.recordset[0] ?? null;
 }
 
+async function transferirAdminGeneralPerfil({ instance_id, requested_by_tenant_user_id, proposed_admin_tenant_user_id, password_secret_ref }) {
+  const pool = getPool('antojados');
+  const adminProfileId = await _getAdminGeneralProfileId(pool, instance_id);
+  const baseProfileId = await _getBaseEmployeeProfileId(pool, instance_id);
+
+  if (!adminProfileId) throw Object.assign(new Error('No existe perfil admin_general para la instancia.'), { status: 409 });
+  if (!baseProfileId) throw Object.assign(new Error('No existe perfil base employee/member para la instancia.'), { status: 409 });
+  if (!password_secret_ref) throw Object.assign(new Error('password_secret_ref es requerido'), { status: 400 });
+  if (!proposed_admin_tenant_user_id) throw Object.assign(new Error('proposed_admin_tenant_user_id es requerido'), { status: 400 });
+  if (String(requested_by_tenant_user_id) === String(proposed_admin_tenant_user_id)) {
+    throw Object.assign(new Error('Selecciona un miembro distinto al Admin General actual.'), { status: 409 });
+  }
+
+  const tr = new sql.Transaction(pool);
+  try {
+    await tr.begin();
+
+    const currentAdmin = await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instance_id)
+      .input('tenantUserId', sql.NVarChar(64), requested_by_tenant_user_id)
+      .input('adminProfileId', sql.NVarChar(64), adminProfileId)
+      .query(`
+        SELECT TOP 1 tu.id, tu.user_id, ai.password_secret_ref
+        FROM antojados_core.biz_tenant_users tu WITH (UPDLOCK, HOLDLOCK)
+        JOIN antojados_core.auth_identities ai ON ai.user_id = tu.user_id
+        WHERE tu.instance_id = @instanceId
+          AND tu.id = @tenantUserId
+          AND tu.status = 'active'
+          AND tu.profile_id = @adminProfileId
+      `);
+    const admin = currentAdmin.recordset[0] || null;
+    if (!admin) throw Object.assign(new Error('Solo el Admin General actual puede cambiar el perfil Admin General.'), { status: 403 });
+    if (String(admin.password_secret_ref || '') !== String(password_secret_ref)) {
+      throw Object.assign(new Error('Credencial invalida para cambiar Admin General.'), { status: 401 });
+    }
+
+    const proposed = await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instance_id)
+      .input('proposedId', sql.NVarChar(64), proposed_admin_tenant_user_id)
+      .input('adminProfileId', sql.NVarChar(64), adminProfileId)
+      .query(`
+        SELECT TOP 1 id, profile_id
+        FROM antojados_core.biz_tenant_users WITH (UPDLOCK, HOLDLOCK)
+        WHERE instance_id = @instanceId
+          AND id = @proposedId
+          AND status = 'active'
+      `);
+    const proposedRow = proposed.recordset[0] || null;
+    if (!proposedRow) throw Object.assign(new Error('El nuevo Admin General debe ser miembro activo de la cuenta.'), { status: 409 });
+    if (String(proposedRow.profile_id || '') === String(adminProfileId)) {
+      throw Object.assign(new Error('El miembro seleccionado ya es Admin General.'), { status: 409 });
+    }
+
+    await new sql.Request(tr)
+      .input('instanceId', sql.NVarChar(64), instance_id)
+      .input('adminProfileId', sql.NVarChar(64), adminProfileId)
+      .input('baseProfileId', sql.NVarChar(64), baseProfileId)
+      .input('proposedId', sql.NVarChar(64), proposed_admin_tenant_user_id)
+      .query(`
+        UPDATE antojados_core.biz_tenant_users
+        SET profile_id = @baseProfileId,
+            updated_at = SYSUTCDATETIME()
+        WHERE instance_id = @instanceId
+          AND profile_id = @adminProfileId
+          AND id <> @proposedId;
+
+        UPDATE antojados_core.biz_tenant_users
+        SET profile_id = @adminProfileId,
+            updated_at = SYSUTCDATETIME()
+        WHERE instance_id = @instanceId
+          AND id = @proposedId
+          AND status = 'active';
+      `);
+
+    await tr.commit();
+
+    return {
+      instance_id,
+      previous_admin_tenant_user_id: requested_by_tenant_user_id,
+      new_admin_tenant_user_id: proposed_admin_tenant_user_id,
+      previous_profile_id: baseProfileId,
+      new_profile_id: adminProfileId,
+      source_table: 'biz_tenant_users',
+      source_field: 'profile_type',
+      source_status: 'admin_general',
+      profile_type: 'admin_general',
+    };
+  } catch (error) {
+    try { await tr.rollback(); } catch (rollbackError) { console.warn('transferirAdminGeneralPerfil.rollback_failed', rollbackError); }
+    throw error;
+  }
+}
+
+async function requestAdminGeneralChange({ instance_id, requested_by_tenant_user_id, proposed_admin_tenant_user_id = null, reason, password_secret_ref }) {
+  const pool = getPool('antojados');
+  await ensureAdminChangeRequestSchema(pool);
+
+  const normalizedReason = String(reason || '').trim();
+  if (!normalizedReason) throw Object.assign(new Error('reason es requerido'), { status: 400 });
+  if (!password_secret_ref) throw Object.assign(new Error('password_secret_ref es requerido'), { status: 400 });
+
+  const adminProfileId = await _getAdminGeneralProfileId(pool, instance_id);
+  const currentAdmin = await pool.request()
+    .input('instanceId', sql.NVarChar(64), instance_id)
+    .input('tenantUserId', sql.NVarChar(64), requested_by_tenant_user_id)
+    .input('adminProfileId', sql.NVarChar(64), adminProfileId)
+    .query(withSponsorBizColumn(`
+      SELECT TOP 1 tu.id, tu.user_id, si.__SPONSOR_BIZ_COL__ AS sponsor_biz_id, ai.password_secret_ref
+      FROM antojados_core.biz_tenant_users tu
+      JOIN antojados_core.sys_instancia si ON si.instance_id = tu.instance_id AND si.instance_type = 'sponsor'
+      JOIN antojados_core.auth_identities ai ON ai.user_id = tu.user_id
+      WHERE tu.instance_id = @instanceId
+        AND tu.id = @tenantUserId
+        AND tu.status = 'active'
+        AND tu.profile_id = @adminProfileId
+    `));
+  const admin = currentAdmin.recordset[0] || null;
+  if (!admin) throw Object.assign(new Error('Solo el Admin General actual puede solicitar el cambio.'), { status: 403 });
+  if (String(admin.password_secret_ref || '') !== String(password_secret_ref)) {
+    throw Object.assign(new Error('Credencial inválida para solicitar cambio de Admin General.'), { status: 401 });
+  }
+
+  if (proposed_admin_tenant_user_id) {
+    const proposed = await pool.request()
+      .input('instanceId', sql.NVarChar(64), instance_id)
+      .input('proposedId', sql.NVarChar(64), proposed_admin_tenant_user_id)
+      .query(`
+        SELECT TOP 1 id
+        FROM antojados_core.biz_tenant_users
+        WHERE instance_id = @instanceId
+          AND id = @proposedId
+          AND status = 'active'
+      `);
+    if (!proposed.recordset[0]) throw Object.assign(new Error('El Admin General propuesto no es miembro activo de la cuenta.'), { status: 409 });
+  }
+
+  const existing = await pool.request()
+    .input('instanceId', sql.NVarChar(64), instance_id)
+    .query(`
+      SELECT TOP 1 request_id, status
+      FROM antojados_core.biz_tenant_admin_change_requests
+      WHERE instance_id = @instanceId
+        AND status IN ('REQUESTED', 'READY_FOR_GT_REVIEW', 'APPROVED', 'READY_TO_SELECT_NEW_ADMIN')
+      ORDER BY created_at DESC
+    `);
+  if (existing.recordset[0]) {
+    throw Object.assign(new Error('Ya existe una solicitud activa de cambio de Admin General.'), { status: 409 });
+  }
+
+  const requestId = randomUUID();
+  const result = await pool.request()
+    .input('requestId', sql.NVarChar(64), requestId)
+    .input('instanceId', sql.NVarChar(64), instance_id)
+    .input('tenantId', sql.NVarChar(64), admin.sponsor_biz_id)
+    .input('requestedBy', sql.NVarChar(64), requested_by_tenant_user_id)
+    .input('currentAdmin', sql.NVarChar(64), admin.id)
+    .input('proposedAdmin', sql.NVarChar(64), proposed_admin_tenant_user_id || null)
+    .input('reason', sql.NVarChar(1000), normalizedReason)
+    .query(`
+      INSERT INTO antojados_core.biz_tenant_admin_change_requests
+        (request_id, instance_id, tenant_id, requested_by_tenant_user_id, current_admin_tenant_user_id,
+         proposed_admin_tenant_user_id, status, reason, credential_verified_at)
+      OUTPUT inserted.*
+      VALUES
+        (@requestId, @instanceId, @tenantId, @requestedBy, @currentAdmin,
+         @proposedAdmin, 'READY_FOR_GT_REVIEW', @reason, SYSUTCDATETIME())
+    `);
+  return result.recordset[0];
+}
+
+async function listAdminGeneralChangeRequests({ instance_id = null, status = null } = {}) {
+  const pool = getPool('antojados');
+  await ensureAdminChangeRequestSchema(pool);
+  const request = pool.request()
+    .input('instanceId', sql.NVarChar(64), instance_id || null)
+    .input('status', sql.NVarChar(40), status || null);
+  const result = await request.query(`
+    SELECT TOP 100 r.*, t.business_name,
+           current_ai.display_name AS current_admin_name,
+           proposed_ai.display_name AS proposed_admin_name
+    FROM antojados_core.biz_tenant_admin_change_requests r
+    LEFT JOIN antojados_core.biz_tenants t ON t.id = r.tenant_id
+    LEFT JOIN antojados_core.biz_tenant_users current_tu ON current_tu.id = r.current_admin_tenant_user_id
+    LEFT JOIN antojados_core.auth_identities current_ai ON current_ai.user_id = current_tu.user_id
+    LEFT JOIN antojados_core.biz_tenant_users proposed_tu ON proposed_tu.id = r.proposed_admin_tenant_user_id
+    LEFT JOIN antojados_core.auth_identities proposed_ai ON proposed_ai.user_id = proposed_tu.user_id
+    WHERE (@instanceId IS NULL OR r.instance_id = @instanceId)
+      AND (@status IS NULL OR r.status = @status)
+    ORDER BY r.created_at DESC
+  `);
+  return result.recordset;
+}
+
 module.exports = {
   getTenantByUserId,
   listPerfiles,
@@ -689,4 +935,7 @@ module.exports = {
   setAsignaciones,
   seedAsignaciones,
   transferirAdminGeneral,
+  transferirAdminGeneralPerfil,
+  requestAdminGeneralChange,
+  listAdminGeneralChangeRequests,
 };

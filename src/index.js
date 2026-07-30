@@ -52,7 +52,7 @@ const antojadosRouter    = require('./routes/v1/antojados');
 const app = express();
 
 // ─── GT Base URL ──────────────────────────────────────────────────────
-const GT_API_URL = process.env.GT_API_URL || 'http://localhost:4010';
+// const GT_API_URL = process.env.GT_API_URL || 'http://localhost:4010';
 
 // ─── CORS ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -140,39 +140,39 @@ app.use(
 // corren en su propio proceso Express independiente (:4010).
 // V5 resuelta: El frontend sigue consumiendo /api/v1/antojados/gt/*
 // pero ahora este Gateway proxea a GT API en vez de resolver localmente.
-function createGtProxy() {
-  return createProxyMiddleware({
-    target: GT_API_URL,
-    changeOrigin: true,
-    on: {
-      proxyReq: (_proxyReq, req) => {
-        console.log(`[gt-proxy] ${req.method} ${req.path} → ${GT_API_URL}`);
-      },
-      proxyRes: (proxyRes, req) => {
-        const origin = req.headers.origin || '*';
-        proxyRes.headers['Access-Control-Allow-Origin'] = origin;
-        proxyRes.headers['Vary'] = 'Origin';
-        console.log(`[gt-proxy] ${req.method} ${req.path} ← ${proxyRes.statusCode}`);
-      },
-      error: (err, req, res) => {
-        console.error(`[gt-proxy] Error: ${err.message}`);
-        res.status(502).json({
-          error: 'gt_api_unreachable',
-          message: 'El servicio GT no está disponible.',
-        });
-      },
-    },
-  });
-}
+// function createGtProxy() {
+//   return createProxyMiddleware({
+//     target: GT_API_URL,
+//     changeOrigin: true,
+//     on: {
+//       proxyReq: (_proxyReq, req) => {
+//         console.log(`[gt-proxy] ${req.method} ${req.path} → ${GT_API_URL}`);
+//       },
+//       proxyRes: (proxyRes, req) => {
+//         const origin = req.headers.origin || '*';
+//         proxyRes.headers['Access-Control-Allow-Origin'] = origin;
+//         proxyRes.headers['Vary'] = 'Origin';
+//         console.log(`[gt-proxy] ${req.method} ${req.path} ← ${proxyRes.statusCode}`);
+//       },
+//       error: (err, req, res) => {
+//         console.error(`[gt-proxy] Error: ${err.message}`);
+//         res.status(502).json({
+//           error: 'gt_api_unreachable',
+//           message: 'El servicio GT no está disponible.',
+//         });
+//       },
+//     },
+//   });
+// }
 
 // Módulos GT → proxy a GT API (:4010)
-app.use('/api/v1/config',      createGtProxy());
-app.use('/api/v1/solutions',   createGtProxy());
-app.use('/api/v1/services',    createGtProxy());
-app.use('/api/v1/planning',    createGtProxy());
-app.use('/api/v1/finance',     createGtProxy());
-app.use('/api/v1/analytics',   createGtProxy());
-app.use('/api/v1/antojados/zonad', createGtProxy());
+// app.use('/api/v1/config',      createGtProxy());
+// app.use('/api/v1/solutions',   createGtProxy());
+// app.use('/api/v1/services',    createGtProxy());
+// app.use('/api/v1/planning',    createGtProxy());
+// app.use('/api/v1/finance',     createGtProxy());
+// app.use('/api/v1/analytics',   createGtProxy());
+// app.use('/api/v1/antojados/zonad', createGtProxy());
 
 // ── JSON parser ──────────────────────────────────────────────────────
 app.use(express.json({ limit: '220mb' }));

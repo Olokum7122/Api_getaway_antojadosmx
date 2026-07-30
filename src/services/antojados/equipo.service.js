@@ -86,6 +86,18 @@ async function transferirAdminGeneral(payload) {
   return mapper.mapTransferResult(await resolver.transferirAdminGeneral(payload));
 }
 
+async function transferirAdminGeneralPerfil(payload) {
+  return resolver.transferirAdminGeneralPerfil(payload);
+}
+
+async function requestAdminGeneralChange(payload) {
+  return mapper.mapAdminChangeRequest(await resolver.requestAdminGeneralChange(payload));
+}
+
+async function listAdminGeneralChangeRequests(filters) {
+  return mapper.mapList(await resolver.listAdminGeneralChangeRequests(filters), mapper.mapAdminChangeRequest);
+}
+
 module.exports = {
   getTenantByUserId,
   listPerfiles,
@@ -102,4 +114,7 @@ module.exports = {
   setAsignaciones,
   seedAsignaciones,
   transferirAdminGeneral,
+  transferirAdminGeneralPerfil,
+  requestAdminGeneralChange,
+  listAdminGeneralChangeRequests,
 };

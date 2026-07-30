@@ -85,7 +85,7 @@ router.post('/biz/posts', (req, res) => {
 //   media_url_invalid=true → lista posts con media_url NULL, vacía o sin protocolo (auditoría)
 //   Si no se pasa sponsor_id ni channel, se requiere media_url_invalid=true (auditoría)
 router.get('/biz/posts', (req, res) => {
-  const { sponsor_id, channel, media_url_invalid } = req.query;
+  const { sponsor_id, channel, media_url_invalid, city_code, zone_code } = req.query;
   const normalizedChannel = channel ? String(channel).trim().toLowerCase() : null;
 
   // Permitir listar posts corruptos para auditoría sin sponsor_id ni channel
@@ -102,6 +102,8 @@ router.get('/biz/posts', (req, res) => {
     sponsor_id: isAudit ? null : sponsor_id,
     channel: normalizedChannel,
     feed_type: req.query.feed_type,
+    city_code: isAudit ? null : city_code,
+    zone_code: isAudit ? null : zone_code,
     limit: isAudit ? 200 : limit,
     offset,
     media_url_invalid: isAudit || undefined,
@@ -247,12 +249,13 @@ router.post('/biz/instancias/:instance_id/expediente/upload', (req, res) => {
     doc_type,
     file_name,
     storage_url,
+    file_base64,
     mime_type,
     size_bytes,
   } = req.body;
   if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
-  if (!uploaded_by_tenant_user_id || !doc_type || !file_name || !storage_url || !mime_type || !Number.isFinite(Number(size_bytes)))
-    return res.status(400).json({ error: 'uploaded_by_tenant_user_id, doc_type, file_name, storage_url, mime_type y size_bytes son requeridos' });
+  if (!uploaded_by_tenant_user_id || !doc_type || !file_name || (!storage_url && !file_base64) || !mime_type || !Number.isFinite(Number(size_bytes)))
+    return res.status(400).json({ error: 'uploaded_by_tenant_user_id, doc_type, file_name, storage_url o file_base64, mime_type y size_bytes son requeridos' });
   send(res, svc.uploadSponsorExpedienteDocument(req.params.instance_id, user_id, req.body), 201);
 });
 
@@ -261,6 +264,33 @@ router.get('/biz/instancias/:instance_id/expediente', (req, res) => {
   const { user_id } = req.query;
   if (!user_id) return res.status(400).json({ error: 'user_id es requerido' });
   send(res, svc.listSponsorExpediente(req.params.instance_id, user_id));
+});
+
+// ─── Sponsor Registration (propietario: /biz/instancias/) — migrado de /gt/instancias/
+// @see CONTRATO_API_OPERACIONES_V1.md §14
+
+// GET /api/v1/antojados/biz/instancias/:instance_id/registration
+router.get("/biz/instancias/:instance_id/registration", (req, res) => {
+  send(res, svc.getSponsorRegistrationForGt(req.params.instance_id));
+});
+
+// POST /api/v1/antojados/biz/instancias/:instance_id/registration/review
+router.post("/biz/instancias/:instance_id/registration/review", (req, res) => {
+  const { decision } = req.body || {};
+  if (!decision) return res.status(400).json({ error: "decision es requerido" });
+  send(res, svc.reviewSponsorRegistration(req.params.instance_id, req.body));
+});
+
+// GET /api/v1/antojados/gt/instancias/:instance_id/registration
+router.get('/gt/instancias/:instance_id/registration', (req, res) => {
+  send(res, svc.getSponsorRegistrationForGt(req.params.instance_id));
+});
+
+// POST /api/v1/antojados/gt/instancias/:instance_id/registration/review
+router.post('/gt/instancias/:instance_id/registration/review', (req, res) => {
+  const { decision } = req.body || {};
+  if (!decision) return res.status(400).json({ error: 'decision es requerido' });
+  send(res, svc.reviewSponsorRegistration(req.params.instance_id, req.body));
 });
 
 module.exports = router;

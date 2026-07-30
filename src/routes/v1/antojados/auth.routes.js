@@ -44,13 +44,28 @@ function parseLimitOffset(query) {
 
 // POST /api/v1/antojados/auth/register
 router.post('/auth/register', (req, res) => {
-  if (Object.prototype.hasOwnProperty.call(req.body, 'account_type')) {
+  const allowed_fields = new Set([
+    'email_hash',
+    'password_secret_ref',
+    'password_confirm_secret_ref',
+    'confirm_password_secret_ref',
+    'instance_type',
+    'display_name',
+    'username',
+    'city_code',
+    'device_id',
+    'marketing_opt_in',
+    'business_name',
+    'biz_type',
+    'phone',
+  ]);
+  const unexpected_fields = Object.keys(req.body || {}).filter((key) => !allowed_fields.has(key));
+  if (unexpected_fields.length) {
     return res.status(400).json({
-      error: 'register no acepta account_type; el dominio se resuelve por instance_type',
+      error: `Campos no permitidos en registro: ${unexpected_fields.join(', ')}`,
     });
   }
   const {
-    user_id,
     email_hash,
     password_secret_ref,
     password_confirm_secret_ref,
@@ -58,9 +73,9 @@ router.post('/auth/register', (req, res) => {
     instance_type,
   } = req.body;
   const missingFields = [];
-  if (!user_id) missingFields.push('user_id');
   if (!email_hash) missingFields.push('email_hash');
   if (!password_secret_ref) missingFields.push('password_secret_ref');
+  if (!instance_type) missingFields.push('instance_type');
   if (missingFields.length) {
     return res.status(400).json({
       error: `Campos faltantes en registro: ${missingFields.join(', ')}`,
@@ -73,7 +88,7 @@ router.post('/auth/register', (req, res) => {
     return res.status(400).json({ error: 'password_secret_ref inválido: debe usar formato sha256:<64 hex>' });
   }
 
-  const normalizedInstanceType = String(instance_type || 'user').trim().toLowerCase();
+  const normalizedInstanceType = String(instance_type).trim().toLowerCase();
   if (!['user', 'sponsor'].includes(normalizedInstanceType)) {
     return res.status(400).json({ error: 'instance_type inválido: permitidos user | sponsor' });
   }
@@ -97,22 +112,33 @@ router.post('/auth/register', (req, res) => {
   if (passwordConfirmRef && String(passwordConfirmRef) !== String(password_secret_ref)) {
     return res.status(400).json({ error: 'La confirmación de contraseña no coincide' });
   }
-  send(res, svc.registerUser(req.body).then((result) => ({ user_id, ...result })), 201);
+  send(res, svc.registerUser(req.body), 201);
 });
 
 // POST /api/v1/antojados/auth/register-employee
 router.post('/auth/register-employee', (req, res) => {
-  const { user_id, email_hash, invite_code, display_name, password_secret_ref } = req.body;
-  if (!user_id || !email_hash || !invite_code || !display_name || !password_secret_ref)
+  const allowed_fields = new Set([
+    'email_hash',
+    'invite_code',
+    'display_name',
+    'city_code',
+    'device_id',
+    'password_secret_ref',
+    'password_confirm_secret_ref',
+    'confirm_password_secret_ref',
+    'marketing_opt_in',
+  ]);
+  const unexpected_fields = Object.keys(req.body || {}).filter((key) => !allowed_fields.has(key));
+  if (unexpected_fields.length) {
     return res.status(400).json({
-      error: 'user_id, email_hash, invite_code, display_name y password_secret_ref son requeridos',
-    });
-  if (Object.prototype.hasOwnProperty.call(req.body, 'account_type')
-      || Object.prototype.hasOwnProperty.call(req.body, 'id')) {
-    return res.status(400).json({
-      error: 'register-employee no acepta account_type ni id; el dominio se resuelve por instancia y membresia de tenant',
+      error: `Campos no permitidos en registro empleado: ${unexpected_fields.join(', ')}`,
     });
   }
+  const { email_hash, invite_code, display_name, password_secret_ref } = req.body;
+  if (!email_hash || !invite_code || !display_name || !password_secret_ref)
+    return res.status(400).json({
+      error: 'email_hash, invite_code, display_name y password_secret_ref son requeridos',
+    });
   if (!/^sha256:[a-f0-9]{64}$/i.test(String(password_secret_ref))) {
     return res.status(400).json({ error: 'password_secret_ref inválido: debe usar formato sha256:<64 hex>' });
   }

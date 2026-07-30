@@ -7,11 +7,11 @@
  * RESPONSABLE:  Montar todos los sub-routers del dominio Antojados
  *               en el router principal /api/v1/antojados.
  *
- * NO HACE:
- *   - No contiene lógica de negocio
- *   - No expone rutas fuera del prefijo /api/v1/antojados
- *   - No incluye rutas de Explorer (publications, packages-draft, templates)
- *     Explorer publica como usuario feed, no es parte del consumo de datos
+ * NAMESPACES PROPIETARIOS (CONTRATO_API_OPERACIONES_V1.md §14):
+ *   /api/v1/antojados/dimensiones/*           → catálogo, scanner, templates, checked
+ *   /api/v1/antojados/cuentas/*               → tenants
+ *   /api/v1/antojados/equipo/*                → perfiles, usuarios, UAC, admin changes
+ *   /api/v1/antojados/efirma/*                → ciclo de e-firma
  *
  * SUB-ROUTERS (según modelo feed.md y modelo vertical/transversal):
  *   auth.routes        → autenticación
@@ -26,30 +26,25 @@
  *   sync.routes        → sincronización offline
  *   rewards.routes     → recompensas/cupones
  *   analytics.routes   → analíticas
- *   biz.routes         → biz_posts (§1, §2, §5)
- *   equipo.routes      → equipo de trabajo
+ *   biz.routes         → biz_posts, registration, expediente (§1, §2, §5)
+ *   equipo.routes      → equipo, perfiles, usuarios, UAC, admin changes
  *   instancias.routes  → instancias de negocio
+ *   dimensiones.routes → catálogo dimensiones, scanner, templates, checked
+ *   cuentas.routes     → tenants
+ *   efirma.routes      → e-firma
  *
- * RUTAS GT locales (gobierno Antojados):
- *   gt-tenants.routes  → tenants/expediente sponsor
- *   gt-efirma.routes   → eFirma sponsor
- *   gt-dimensions.routes → catálogo dimensions/sub-dimensions Antojados
- *   gt-templates.routes → plantillas DEFAULT_USER/DEFAULT_SPONSOR
- *   gt-checked.routes → locations materializadas por instancia
- *   gt-moderation.routes → moderación social (app-facing)
- *   gt-notifications.routes → notificaciones (app-facing)
- *   gt-proxy.routes    → proxy GT API sólo para rutas transversales restantes
+ * RUTAS GT LEGACY (mantenidas por retrocompatibilidad hasta migración total):
+ *   gt-tenants.routes           → /gt/tenants/ (legacy) (REEMPLAZADO por /cuentas/tenants/*)
+ *   gt-efirma.routes            → /gt/efirma/ (legacy) (REEMPLAZADO por /efirma/*)
+ *   gt-dimensions.routes        → /gt/dimensions/ (legacy) (REEMPLAZADO por /dimensiones/catalog/*)
+ *   gt-templates.routes         → /gt/templates/ (legacy) (REEMPLAZADO por /dimensiones/templates/*)
+ *   gt-checked.routes           → /gt/instances/{id}/checked/{dimensions} (REEMPLAZADO por /dimensiones/checked/*)
+ *   gt-user-account-control.routes → /gt/user-account-control/ (legacy) (REEMPLAZADO por /equipo/user-account-control/*)
+ *   gt-moderation.routes        → moderación social (app-facing, se mantiene)
+ *   gt-notifications.routes     → notificaciones (app-facing, se mantiene)
  *
- * RUTAS ELIMINADAS (Explorer legacy — no forman parte del feed):
- *   publications.routes     → 🗑️ ELIMINADO
- *   packages-draft.routes   → 🗑️ ELIMINADO
- *   templates.routes        → 🗑️ ELIMINADO
- *   gt-ops.routes           → 🗑️ ELIMINADO
- *   gt-tiles.routes         → 🗑️ ELIMINADO
- *
- * REFERENCIAS:
- *   - antojadosmx/docs/feed.md (Sección 11.4)
- *   - PLAN_REESTRUCTURACION_CONSUMO.md
+ * @see CONTRATO_API_OPERACIONES_V1.md §14 — Namespaces Propietarios
+ * @see PLAN_REESTRUCTURACION_CONSUMO.md
  * ══════════════════════════════════════════════════════════════════════════════
  */
 const { Router } = require('express');
@@ -73,7 +68,13 @@ router.use(require('./biz.routes'));
 router.use(require('./equipo.routes'));
 router.use(require('./instancias.routes'));
 
-// ─── GT local (dimensiones/plantillas/locations propias de Antojados) ───
+// ─── Namespaces Propietarios (CONTRATO_API_OPERACIONES_V1.md §14) ────
+router.use(require('./dimensiones.routes'));
+router.use(require('./cuentas.routes'));
+router.use(require('./efirma.routes'));
+
+// ─── GT Legacy (retrocompatibilidad — se eliminarán cuando Antojados API
+//      migre completamente y GT API apunte solo a rutas propietarias) ───
 router.use(require('./gt-tenants.routes'));
 router.use(require('./gt-efirma.routes'));
 router.use(require('./gt-dimensions.routes'));
@@ -81,8 +82,9 @@ router.use(require('./gt-templates.routes'));
 router.use(require('./gt-checked.routes'));
 router.use(require('./gt-moderation.routes'));
 router.use(require('./gt-notifications.routes'));
+router.use(require('./gt-user-account-control.routes'));
 
-// ─── GT proxy (:4010) para rutas transversales no resueltas localmente ───
-router.use(require('./gt-proxy.routes'));
+// ─── GT proxy (:4010) — desactivado; GT API corre como proceso independiente ───
+// router.use(require('./gt-proxy.routes'));
 
 module.exports = router;

@@ -60,28 +60,28 @@ async function resetPasswordWithRecovery(payload) {
   return authResolver.resetPasswordWithRecovery(payload);
 }
 
-async function setExplorerStatus(userId, payload) {
-  return authResolver.setExplorerStatus(userId, payload);
+async function setExplorerStatus(user_id, payload) {
+  return authResolver.setExplorerStatus(user_id, payload);
 }
 
 async function listExplorers(payload) {
   return authResolver.listExplorers(payload);
 }
 
-async function linkExplorerAssociation(userId, payload) {
-  return authResolver.linkExplorerAssociation(userId, payload);
+async function linkExplorerAssociation(user_id, payload) {
+  return authResolver.linkExplorerAssociation(user_id, payload);
 }
 
-async function listExplorerAssociations(userId, payload) {
-  return authResolver.listExplorerAssociations(userId, payload);
+async function listExplorerAssociations(user_id, payload) {
+  return authResolver.listExplorerAssociations(user_id, payload);
 }
 
-async function getExplorerActivity(userId, payload) {
-  return authResolver.getExplorerActivity(userId, payload);
+async function getExplorerActivity(user_id, payload) {
+  return authResolver.getExplorerActivity(user_id, payload);
 }
 
-async function updateExplorerAssociation(userId, associationId, payload) {
-  return authResolver.updateExplorerAssociation(userId, associationId, payload);
+async function updateExplorerAssociation(user_id, association_id, payload) {
+  return authResolver.updateExplorerAssociation(user_id, association_id, payload);
 }
 
 async function listExplorersActivity(payload) {

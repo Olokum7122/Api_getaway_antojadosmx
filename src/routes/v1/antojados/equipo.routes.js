@@ -37,7 +37,8 @@
  */
 const { Router } = require('express');
 const svc = require('../../../services/antojados/equipo.service');
-const { send } = require('./_helpers');
+const uacSvc = require('../../../services/antojados/gt-user-account-control.service');
+const { parsePage, send } = require('./_helpers');
 
 const router = Router();
 
@@ -95,6 +96,75 @@ router.post('/equipo/usuarios/transferir-admin', (req, res) => {
   send(res, svc.transferirAdminGeneral({ instance_id, nuevo_user_id }));
 });
 
+// POST /api/v1/antojados/equipo/usuarios/transferir-admin-perfil
+router.post('/equipo/usuarios/transferir-admin-perfil', (req, res) => {
+  const { instance_id, requested_by_tenant_user_id, proposed_admin_tenant_user_id, password_secret_ref } = req.body;
+  if (!instance_id || !requested_by_tenant_user_id || !proposed_admin_tenant_user_id || !password_secret_ref) {
+    return res.status(400).json({ error: 'instance_id, requested_by_tenant_user_id, proposed_admin_tenant_user_id y password_secret_ref son requeridos' });
+  }
+  send(res, svc.transferirAdminGeneralPerfil(req.body));
+});
+
+// POST /api/v1/antojados/equipo/admin-general-change-requests
+router.post('/equipo/admin-general-change-requests', (req, res) => {
+  const { instance_id, requested_by_tenant_user_id, reason, password_secret_ref } = req.body;
+  if (!instance_id || !requested_by_tenant_user_id || !reason || !password_secret_ref) {
+    return res.status(400).json({ error: 'instance_id, requested_by_tenant_user_id, reason y password_secret_ref son requeridos' });
+  }
+  send(res, svc.requestAdminGeneralChange(req.body), 201);
+});
+
+// GET /api/v1/antojados/gt/admin-general-change-requests?instance_id=&status=
+
+// GET /api/v1/antojados/equipo/admin-change-requests — Listar solicitudes de cambio Admin General
+router.get("/equipo/admin-change-requests", (req, res) => {
+  send(res, svc.listAdminGeneralChangeRequests({
+    instance_id: req.query.instance_id || null,
+    status: req.query.status || null,
+  }));
+});
+router.get('/gt/admin-general-change-requests', (req, res) => {
+  send(res, svc.listAdminGeneralChangeRequests({
+    instance_id: req.query.instance_id || null,
+    status: req.query.status || null,
+  }));
+});
+
+
+// ─── User Account Control (UAC) — Control administrativo de cuentas sociales ──
+// Migrado de /gt/user-account-control/* → /equipo/user-account-control/*
+// @see CONTRATO_API_OPERACIONES_V1.md §14
+
+// GET /api/v1/antojados/equipo/user-account-control
+router.get("/equipo/user-account-control", (req, res) => {
+  const { page, limit, offset } = parsePage(req.query);
+  send(res, uacSvc.listUserAccountControl({
+    control_status: req.query.control_status || null,
+    search: req.query.search || null,
+    limit,
+    offset,
+  }).then(data => ({ data, page, limit })));
+});
+
+// POST /api/v1/antojados/equipo/user-account-control/expire
+router.post("/equipo/user-account-control/expire", (req, res) => {
+  send(res, uacSvc.expireUserAccountControl());
+});
+
+// GET /api/v1/antojados/equipo/user-account-control/:user_id
+router.get("/equipo/user-account-control/:user_id", (req, res) => {
+  send(res, uacSvc.getUserAccountControl({
+    user_id: req.params.user_id,
+    instance_id: req.query.instance_id || null,
+  }));
+});
+
+// POST /api/v1/antojados/equipo/user-account-control/:user_id
+router.post("/equipo/user-account-control/:user_id", (req, res) => {
+  send(res, uacSvc.setUserAccountControl(req.params.user_id, req.body), 201);
+});
+
+
 // ─── Invitaciones ─────────────────────────────────────────────────────────────
 
 // GET /api/v1/antojados/equipo/invitaciones?instance_id=...
@@ -124,7 +194,7 @@ router.patch('/equipo/invitaciones/:id', (req, res) => {
 // DELETE /api/v1/antojados/equipo/invitaciones/:id
 router.delete('/equipo/invitaciones/:id', (req, res) => {
   send(res, svc.deleteInvitacion(req.params.id)
-    .then(() => ({ id: req.params.id, deleted: true })));
+    .then(() => ({ id: req.params.id, cancelled: true })));
 });
 
 // GET /api/v1/antojados/equipo/invitacion/:invite_code

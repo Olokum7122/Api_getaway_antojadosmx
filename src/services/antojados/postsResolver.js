@@ -194,18 +194,21 @@ async function uploadSocPostMedia({ post_id, user_id, file_buffer, file_name, mi
   return { media_id: mediaId, url: uploadResult.originalUrl };
 }
 
-async function listSocPosts({ user_id, channel, feed_type, limit = 20, offset = 0, media_url_invalid } = {}) {
+async function listSocPosts({ user_id, channel, feed_type, city_code, zone_code, limit = 20, offset = 0, media_url_invalid } = {}) {
   const isAudit = media_url_invalid === true || media_url_invalid === 'true';
 
   const result = await getPool('antojados').request()
     .input('userId', sql.NVarChar(64), isAudit ? null : (user_id || null))
     .input('channel', sql.NVarChar(30), isAudit ? null : (channel || null))
     .input('feedType', sql.NVarChar(30), feed_type || null)
+    .input('cityCode', sql.NVarChar(20), isAudit ? null : (city_code || null))
+    .input('zoneCode', sql.NVarChar(20), isAudit ? null : (zone_code || null))
     .input('limit', sql.Int, isAudit ? 200 : limit)
     .input('offset', sql.Int, offset)
     .query(`
       SELECT p.post_id, p.user_id, p.channel, p.feed_type,
              p.media_url,
+             p.city_code, p.zone_code,
              p.badge_id, b.badge, b.color_gradient AS badge_color,
              b.doc_json_campos AS badge_campos,
              pc.campos_json,
@@ -227,6 +230,8 @@ async function listSocPosts({ user_id, channel, feed_type, limit = 20, offset = 
         AND (@userId IS NULL OR p.user_id = @userId)
         AND (@channel IS NULL OR p.channel = @channel)
         AND (@feedType IS NULL OR p.feed_type = @feedType)
+        AND (@cityCode IS NULL OR p.city_code = @cityCode)
+        AND (@zoneCode IS NULL OR p.zone_code = @zoneCode)
       ORDER BY p.created_at DESC
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
@@ -295,12 +300,77 @@ async function commentSocPost({ post_id, user_id, content_text, parent_comment_i
   return { ok: true };
 }
 
+async function listSocPostComments(post_id, { limit = 50, offset = 0 } = {}) {
+  const result = await getPool('antojados').request()
+    .input('post_id', sql.NVarChar(64), post_id)
+    .input('limit', sql.Int, limit)
+    .input('offset', sql.Int, offset)
+    .query(`
+      SELECT i.interaction_id, i.user_id,
+             COALESCE(a.display_name, a.instagram_handle, i.user_id) AS display_name,
+             a.instagram_handle AS author_handle,
+             i.interaction_type, i.parent_comment_id, i.content_text,
+             i.moderation_status, i.created_at_client, i.received_at_server
+      FROM antojados_core.soc_post_interactions i
+      LEFT JOIN antojados_core.auth_identities a ON a.user_id = i.user_id
+      WHERE i.post_id = @post_id
+        AND i.interaction_type IN ('comment_created', 'reply_created')
+        AND i.moderation_status = 'approved'
+      ORDER BY i.received_at_server ASC
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+    `);
+  return result.recordset;
+}
+
 async function viewSocPost({ post_id, user_id }) {
   await getPool('antojados').request()
     .input('post_id', sql.NVarChar(64), post_id)
     .input('user_id', sql.NVarChar(64), user_id)
     .execute('antojados_core.usp_soc_post_view');
   return { ok: true };
+}
+
+async function shareSocPost({ post_id, user_id, created_at_client = null }) {
+  const interactionId = randomUUID();
+  const tx = new sql.Transaction(getPool('antojados'));
+  try {
+    await tx.begin();
+    await new sql.Request(tx)
+      .input('interaction_id', sql.NVarChar(64), interactionId)
+      .input('post_id', sql.NVarChar(64), post_id)
+      .input('user_id', sql.NVarChar(64), user_id)
+      .input('created_at_client', sql.DateTime2(3), created_at_client ? new Date(created_at_client) : null)
+      .query(`
+        INSERT INTO antojados_core.soc_post_interactions
+          (interaction_id, post_id, user_id, interaction_type, created_at_client)
+        VALUES (@interaction_id, @post_id, @user_id, 'post_shared', @created_at_client)
+      `);
+    await new sql.Request(tx)
+      .input('post_id', sql.NVarChar(64), post_id)
+      .query('UPDATE antojados_core.soc_posts SET shares_count = shares_count + 1 WHERE post_id = @post_id');
+    await tx.commit();
+  } catch (e) {
+    try { await tx.rollback(); } catch (_) {}
+    throw e;
+  }
+  _emitEvent({ post_id, user_id, event_type: 'post_shared', event_ts: created_at_client });
+  return { ok: true, interaction_id: interactionId };
+}
+
+async function saveSocPost({ post_id, user_id, created_at_client = null }) {
+  const interactionId = randomUUID();
+  await getPool('antojados').request()
+    .input('interaction_id', sql.NVarChar(64), interactionId)
+    .input('post_id', sql.NVarChar(64), post_id)
+    .input('user_id', sql.NVarChar(64), user_id)
+    .input('created_at_client', sql.DateTime2(3), created_at_client ? new Date(created_at_client) : null)
+    .query(`
+      INSERT INTO antojados_core.soc_post_interactions
+        (interaction_id, post_id, user_id, interaction_type, created_at_client)
+      VALUES (@interaction_id, @post_id, @user_id, 'post_saved', @created_at_client)
+    `);
+  _emitEvent({ post_id, user_id, event_type: 'post_save', event_ts: created_at_client });
+  return { ok: true, interaction_id: interactionId };
 }
 
 async function getSocPostInteractionsSummary({ post_id, user_id }) {
@@ -346,7 +416,10 @@ module.exports = {
   likeSocPost,
   unlikeSocPost,
   commentSocPost,
+  listSocPostComments,
   viewSocPost,
+  shareSocPost,
+  saveSocPost,
   getSocPostInteractionsSummary,
   deleteSocPost,
 };

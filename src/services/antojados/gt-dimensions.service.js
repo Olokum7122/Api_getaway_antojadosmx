@@ -13,6 +13,7 @@ const {
 const { randomUUID } = require("./_shared");
 const fs = require("fs/promises");
 const path = require("path");
+const { pathToFileURL } = require("url");
 
 // GT-DIMENSIONS â€” catÃ¡logo sys_dimension y sys_sub_dimension (Â§1.3.7)
 // Pool: antojados (ATLX_ANTOJADOS_APP)
@@ -33,6 +34,10 @@ function toDate(value) {
 const PROJECT_ROOT = path.resolve(__dirname, "../../../../");
 const DEFAULT_SCANNER_SRC = path.resolve(PROJECT_ROOT, "AntojadosMxQuasar/src");
 const ENV_SCANNER_SRC = process.env.ANTOJADOS_SCANNER_SRC || "";
+const REAL_METADATA_SCANNER = path.resolve(
+  PROJECT_ROOT,
+  "shared/ui/dimensions/metadataScanner.js",
+);
 
 function normalizeUpper(value) {
   return String(value || "")
@@ -444,6 +449,16 @@ async function buildScannerPayloadFromSource(scanRoot = DEFAULT_SCANNER_SRC) {
   };
 }
 
+async function buildScannerPayloadFromRealMetadata() {
+  const scanner = await import(pathToFileURL(REAL_METADATA_SCANNER).href);
+  if (typeof scanner.buildScannerPayloadFromTabbarbases !== "function") {
+    const err = new Error("metadataScanner.js no exporta buildScannerPayloadFromTabbarbases");
+    err.status = 500;
+    throw err;
+  }
+  return scanner.buildScannerPayloadFromTabbarbases();
+}
+
 /**
  * Procesa el resultado del scanner de dimensiones.
  * Solo inserta dimensiones/sub-dimensiones que aÃºn no existen (PENDING_REVIEW).
@@ -451,8 +466,7 @@ async function buildScannerPayloadFromSource(scanRoot = DEFAULT_SCANNER_SRC) {
  * @param {{ dimensions?: object[], sub_dimensions?: object[] }} payload
  */
 async function runScannerFromSource(options = {}) {
-  const root = await resolveScanRoot(options?.scanRoot);
-  const payload = await buildScannerPayloadFromSource(root);
+  const payload = await buildScannerPayloadFromRealMetadata();
   return {
     inserted_dims: 0,
     inserted_sub_dims: 0,
@@ -468,8 +482,7 @@ async function runScannerFromSource(options = {}) {
 }
 
 async function persistScannerSelectionFromSource(options = {}) {
-  const root = await resolveScanRoot(options?.scanRoot);
-  const payload = await buildScannerPayloadFromSource(root);
+  const payload = await buildScannerPayloadFromRealMetadata();
   const purgeExisting = false;
   const approvedDimensionCodes = new Set(
     (Array.isArray(options?.approved_dimension_codes) ? options.approved_dimension_codes : [])

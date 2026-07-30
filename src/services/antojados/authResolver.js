@@ -247,18 +247,42 @@ async function loginUser({ email_hash, login_identifier, password_secret_ref }) 
     .input('loginIdentifier', sql.NVarChar(150), login_identifier ? String(login_identifier).trim().toLowerCase() : null)
     .input('passwordSecretRef', sql.NVarChar(200), password_secret_ref)
     .query(`
-      SELECT user_id, display_name, username,
-             avatar_url, bio,
-             social_account_role_code, collaboration_type_code,
-             corp_instance_id, program_instance_id, commission_profile_code,
-             economic_status, status
-      FROM antojados_core.auth_identities
+      SELECT TOP 1 ai.user_id, ai.display_name, ai.username,
+             ai.avatar_url, ai.bio,
+             ai.social_account_role_code, ai.collaboration_type_code,
+             ai.corp_instance_id, ai.program_instance_id, ai.commission_profile_code,
+             ai.economic_status, ai.status,
+             COALESCE(sponsor_ctx.instance_id, user_ctx.instance_id) AS instance_id,
+             sponsor_ctx.tenant_user_id,
+             CASE
+               WHEN sponsor_ctx.instance_id IS NOT NULL THEN 'sponsor'
+               WHEN user_ctx.instance_id IS NOT NULL THEN 'user'
+               ELSE NULL
+             END AS instance_type
+      FROM antojados_core.auth_identities ai
+      OUTER APPLY (
+        SELECT TOP 1 si.instance_id, btu.id AS tenant_user_id
+        FROM antojados_core.biz_tenant_users btu
+        INNER JOIN antojados_core.sys_instancia si
+          ON si.instance_id = btu.instance_id
+         AND si.instance_type = 'sponsor'
+        WHERE btu.user_id = ai.user_id
+          AND btu.status = 'active'
+        ORDER BY btu.created_at DESC
+      ) sponsor_ctx
+      OUTER APPLY (
+        SELECT TOP 1 si.instance_id
+        FROM antojados_core.sys_instancia si
+        WHERE si.cuenta_id = ai.user_id
+          AND si.instance_type = 'user'
+        ORDER BY si.created_at DESC
+      ) user_ctx
       WHERE (
-             email_hash = @emailHash
-          OR LOWER(username) = @loginIdentifier
+             ai.email_hash = @emailHash
+          OR LOWER(ai.username) = @loginIdentifier
       )
-        AND password_secret_ref = @passwordSecretRef
-        AND status = 'active'
+        AND ai.password_secret_ref = @passwordSecretRef
+        AND ai.status = 'active'
     `);
   // ⚠️ DB-V002 corregido: ya NO se devuelve city_code en login.
   // La ciudad debe resolverse desde geoResolver.resolveBarContext().
@@ -267,7 +291,7 @@ async function loginUser({ email_hash, login_identifier, password_secret_ref }) 
 
 async function getProfile(user_id) {
   const result = await getPool('antojados').request()
-    .input('userId', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), user_id)
     .query(`
       SELECT user_id, display_name, username,
              avatar_url, bio,
@@ -277,7 +301,7 @@ async function getProfile(user_id) {
              corp_instance_id, program_instance_id, commission_profile_code,
              economic_status, status, created_at
       FROM antojados_core.auth_identities
-      WHERE user_id = @UserId
+      WHERE user_id = @user_id
     `);
   // ⚠️ DB-V002 corregido: ya NO se devuelve city_code desde auth_identities.
   // La ciudad de contexto se resuelve desde geoResolver.resolveBarContext().
@@ -429,7 +453,7 @@ async function updateProfile(user_id, { display_name, username, bio, avatar_url,
   // La ciudad del usuario se resuelve desde geoResolver.resolveBarContext(),
   // no desde el perfil. El parámetro city_code se ignora intencionalmente.
   await getPool('antojados').request()
-    .input('userId', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), user_id)
     .input('displayName', sql.NVarChar(150), display_name ?? null)
     .input('username', sql.NVarChar(80), username ?? null)
     .input('bio', sql.NVarChar(500), bio ?? null)
@@ -451,7 +475,7 @@ async function updateProfile(user_id, { display_name, username, bio, avatar_url,
           x_handle         = COALESCE(@xHandle, x_handle),
           whatsapp_number  = COALESCE(@whatsappNumber, whatsapp_number),
           updated_at       = SYSUTCDATETIME()
-      WHERE user_id = @userId
+      WHERE user_id = @user_id
         AND (
           @displayName IS NOT NULL OR @username IS NOT NULL OR @bio IS NOT NULL OR
           @avatarUrl IS NOT NULL OR @instagramHandle IS NOT NULL OR
@@ -474,7 +498,7 @@ async function recordPasswordRecoveryDelivery({
   await getPool('antojados').request()
     .input('id', sql.NVarChar(64), recovery_request_id)
     .input('deliveryLogId', sql.NVarChar(64), randomUUID())
-    .input('userId', sql.NVarChar(64), user_id)
+    .input('user_id', sql.NVarChar(64), user_id)
     .input('channel', sql.NVarChar(20), delivery_channel)
     .input('targetMasked', sql.NVarChar(150), delivery_target_masked)
     .input('status', sql.NVarChar(30), status)
@@ -498,7 +522,7 @@ async function recordPasswordRecoveryDelivery({
         (delivery_log_id, recovery_request_id, user_id, delivery_channel, delivery_target_masked,
          provider, provider_message_id, status, error_message, raw_response)
       VALUES
-        (@deliveryLogId, @id, @userId, @channel, @targetMasked,
+        (@deliveryLogId, @id, @user_id, @channel, @targetMasked,
          @provider, @providerMessageId, @status, @errorMessage, @rawResponse);
     `);
 }
@@ -568,7 +592,7 @@ async function requestPasswordRecovery({ email_hash, delivery_channel, email }) 
 
     await new sql.Request(tr)
       .input('id', sql.NVarChar(64), recoveryId)
-      .input('userId', sql.NVarChar(64), identityRow.user_id)
+      .input('user_id', sql.NVarChar(64), identityRow.user_id)
       .input('emailHash', sql.NVarChar(128), email_hash)
       .input('recoveryCodeHash', sql.NVarChar(64), recoveryCodeHash)
       .input('channel', sql.NVarChar(20), channel)
@@ -578,7 +602,7 @@ async function requestPasswordRecovery({ email_hash, delivery_channel, email }) 
           (id, user_id, email_hash, recovery_code_hash, status, expires_at,
            delivery_channel, delivery_target_masked, delivery_status)
         VALUES
-          (@id, @userId, @emailHash, @recoveryCodeHash, 'pending', DATEADD(MINUTE, 15, SYSUTCDATETIME()),
+          (@id, @user_id, @emailHash, @recoveryCodeHash, 'pending', DATEADD(MINUTE, 15, SYSUTCDATETIME()),
            @channel, @targetMasked, 'created')
       `);
 
@@ -588,8 +612,8 @@ async function requestPasswordRecovery({ email_hash, delivery_channel, email }) 
       channel,
       target: target.target,
       code: recoveryCode,
-      recoveryRequestId: recoveryId,
-      userId: identityRow.user_id,
+      recovery_request_id: recoveryId,
+      user_id: identityRow.user_id,
     });
 
     await recordPasswordRecoveryDelivery({
@@ -762,13 +786,13 @@ async function resetPasswordWithRecovery({ recovery_request_id, recovery_code, p
     }
 
     await new sql.Request(tr)
-      .input('userId', sql.NVarChar(64), row.user_id)
+      .input('user_id', sql.NVarChar(64), row.user_id)
       .input('passwordSecretRef', sql.NVarChar(200), password_secret_ref)
       .query(`
         UPDATE antojados_core.auth_identities
         SET password_secret_ref = @passwordSecretRef,
             updated_at = SYSUTCDATETIME()
-        WHERE user_id = @userId
+        WHERE user_id = @user_id
       `);
 
     await new sql.Request(tr)

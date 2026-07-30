@@ -56,6 +56,7 @@ function _parseFeedParams(query) {
   const ownerId = query.owner_id || query.sponsor_id || query.user_id || null;
   return {
     city_code: query.city_code || null,
+    zone_code: query.zone_code || null,
     scope_level: query.scope_level || 'ciudad',
     cursor: query.cursor || null,
     limit: parseInt(query.limit, 10) || 20,

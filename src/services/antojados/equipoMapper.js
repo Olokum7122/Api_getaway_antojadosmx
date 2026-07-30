@@ -138,6 +138,29 @@ function mapTransferResult(row) {
   };
 }
 
+function mapAdminChangeRequest(row) {
+  if (!row || !row.request_id) throw new Error('mapAdminChangeRequest: request_id faltante');
+  return {
+    request_id: row.request_id,
+    instance_id: row.instance_id ?? null,
+    tenant_id: row.tenant_id ?? null,
+    business_name: row.business_name ?? null,
+    requested_by_tenant_user_id: row.requested_by_tenant_user_id ?? null,
+    current_admin_tenant_user_id: row.current_admin_tenant_user_id ?? null,
+    current_admin_name: row.current_admin_name ?? null,
+    proposed_admin_tenant_user_id: row.proposed_admin_tenant_user_id ?? null,
+    proposed_admin_name: row.proposed_admin_name ?? null,
+    status: row.status ?? null,
+    reason: row.reason ?? null,
+    credential_verified_at: row.credential_verified_at ?? null,
+    created_at: row.created_at ?? null,
+    reviewed_by: row.reviewed_by ?? null,
+    reviewed_at: row.reviewed_at ?? null,
+    decision_reason: row.decision_reason ?? null,
+    applied_at: row.applied_at ?? null,
+  };
+}
+
 function mapList(rows, mapper) {
   if (!Array.isArray(rows)) throw new Error('mapList: rows no es array');
   return rows.map(mapper);
@@ -152,5 +175,6 @@ module.exports = {
   mapInsertedResult,
   mapSeedResult,
   mapTransferResult,
+  mapAdminChangeRequest,
   mapList,
 };

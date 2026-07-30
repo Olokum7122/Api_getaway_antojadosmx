@@ -16,6 +16,13 @@
  *   antojados_core.auth_identities → registro de cuenta
  *   antojados_core.sys_instancia   → creación de instancia user
  *
+ * ID GLOSSARY:
+ *   auth_identities.user_id      → identidad SOC/Auth generada en backend.
+ *   sys_instancia.instance_id    → instancia user creada para cuenta social.
+ *   sys_instancia.cuenta_id      → FK fisica a auth_identities.user_id.
+ *   sys_instancia.tenant_id      → NULL en cuenta social.
+ *   La ubicacion del negocio pertenece al registro de instancia, no a Auth.
+ *
  * REFERENCIAS:
  *   - authResolver.js, auth.service.js
  * ══════════════════════════════════════════════════════════════════════════════
@@ -25,7 +32,6 @@ const { getPool, sql, randomUUID } = require('./_shared');
 
 function validateSocialRegistrationPayload(payload) {
   const missingFields = [];
-  if (!payload?.user_id) missingFields.push('user_id');
   if (!payload?.email_hash) missingFields.push('email_hash');
   if (!payload?.password_secret_ref) missingFields.push('password_secret_ref');
   if (!payload?.display_name) missingFields.push('display_name');
@@ -67,7 +73,6 @@ async function registerSocialUser({
   username,
   city_code,
   device_id,
-  id,
   password_secret_ref,
   password_confirm_secret_ref,
   confirm_password_secret_ref,
@@ -84,8 +89,8 @@ async function registerSocialUser({
   const pool = getPool('antojados');
   const tr = new sql.Transaction(pool);
 
-  let effectiveUserId = user_id;
-  let userInstanceId = randomUUID();
+  let effective_user_id = String(user_id || randomUUID()).trim();
+  let user_instance_id = randomUUID();
 
   try {
     await tr.begin();
@@ -101,15 +106,15 @@ async function registerSocialUser({
     const existingEmailRow = existingByEmail.recordset[0] || null;
 
     if (existingEmailRow) {
-      const existingEmailUserId = String(existingEmailRow.user_id || '').trim();
-      if (existingEmailUserId !== String(user_id)) {
+      const existing_email_user_id = String(existingEmailRow.user_id || '').trim();
+      if (user_id && existing_email_user_id !== String(user_id)) {
         throw Object.assign(
           new Error('El correo ya está asociado a otra cuenta. Inicia sesión o recupera contraseña.'),
           { status: 409 },
         );
       }
 
-      effectiveUserId = existingEmailUserId;
+      effective_user_id = existing_email_user_id;
 
       const existingSecret = String(existingEmailRow.password_secret_ref || '').trim();
       if (existingSecret && existingSecret !== String(password_secret_ref)) {
@@ -120,12 +125,11 @@ async function registerSocialUser({
       }
 
       await new sql.Request(tr)
-        .input('userId', sql.NVarChar(64), effectiveUserId)
+        .input('user_id', sql.NVarChar(64), effective_user_id)
         .input('displayName', sql.NVarChar(150), display_name || null)
         .input('username', sql.NVarChar(80), username || null)
         .input('cityCode', sql.NVarChar(30), city_code || null)
         .input('deviceId', sql.NVarChar(64), device_id || null)
-        .input('placeId', sql.NVarChar(64), id || null)
         .input('passwordSecretRef', sql.NVarChar(200), password_secret_ref)
         .query(`
           UPDATE antojados_core.auth_identities
@@ -133,22 +137,21 @@ async function registerSocialUser({
               username = COALESCE(@username, username),
               city_code = COALESCE(@cityCode, city_code),
               device_id_first = COALESCE(@deviceId, device_id_first),
-              id = COALESCE(@placeId, id),
               password_secret_ref = CASE
                 WHEN password_secret_ref IS NULL OR LTRIM(RTRIM(password_secret_ref)) = ''
                   THEN @passwordSecretRef
                 ELSE password_secret_ref
               END,
               updated_at = SYSUTCDATETIME()
-          WHERE user_id = @userId
+          WHERE user_id = @user_id
         `);
     } else {
       const existingByUser = await new sql.Request(tr)
-        .input('userId', sql.NVarChar(64), user_id)
+        .input('user_id', sql.NVarChar(64), effective_user_id)
         .query(`
           SELECT TOP 1 user_id
           FROM antojados_core.auth_identities WITH (UPDLOCK, HOLDLOCK)
-          WHERE user_id = @userId
+          WHERE user_id = @user_id
         `);
 
       if (existingByUser.recordset[0]) {
@@ -159,48 +162,47 @@ async function registerSocialUser({
       }
 
       await new sql.Request(tr)
-        .input('userId', sql.NVarChar(64), user_id)
+        .input('user_id', sql.NVarChar(64), effective_user_id)
         .input('emailHash', sql.NVarChar(128), email_hash)
         .input('displayName', sql.NVarChar(150), display_name || null)
         .input('username', sql.NVarChar(80), username || null)
         .input('cityCode', sql.NVarChar(30), city_code || null)
         .input('deviceId', sql.NVarChar(64), device_id || null)
-        .input('placeId', sql.NVarChar(64), id || null)
         .input('passwordSecretRef', sql.NVarChar(200), password_secret_ref)
         .query(`
           INSERT INTO antojados_core.auth_identities
             (user_id, email_hash, display_name, username, city_code, device_id_first,
-             id, password_secret_ref,
+             password_secret_ref,
              status, created_at, updated_at)
           VALUES
-            (@userId, @emailHash, @displayName, @username, @cityCode, @deviceId,
-             @placeId, @passwordSecretRef,
+            (@user_id, @emailHash, @displayName, @username, @cityCode, @deviceId,
+             @passwordSecretRef,
              'active', SYSUTCDATETIME(), SYSUTCDATETIME())
         `);
     }
 
     const existingInstance = await new sql.Request(tr)
-      .input('userId', sql.NVarChar(64), effectiveUserId)
+      .input('user_id', sql.NVarChar(64), effective_user_id)
       .query(`
         SELECT TOP 1 instance_id
         FROM antojados_core.sys_instancia WITH (UPDLOCK, HOLDLOCK)
-        WHERE cuenta_id = @userId
+        WHERE cuenta_id = @user_id
           AND instance_type = 'user'
         ORDER BY created_at DESC
       `);
 
     const existingUserInstanceId = existingInstance.recordset[0]?.instance_id || null;
     if (existingUserInstanceId) {
-      userInstanceId = existingInstance.recordset[0].instance_id;
+      user_instance_id = existingInstance.recordset[0].instance_id;
     } else {
       await new sql.Request(tr)
-        .input('instanceId', sql.NVarChar(64), userInstanceId)
-        .input('userId', sql.NVarChar(64), effectiveUserId)
+        .input('instance_id', sql.NVarChar(64), user_instance_id)
+        .input('user_id', sql.NVarChar(64), effective_user_id)
         .query(`
           INSERT INTO antojados_core.sys_instancia
             (instance_id, cuenta_id, instance_type, tenant_id, status, created_at, updated_at)
           VALUES
-            (@instanceId, @userId, 'user', NULL, 'active', SYSUTCDATETIME(), SYSUTCDATETIME())
+            (@instance_id, @user_id, 'user', NULL, 'active', SYSUTCDATETIME(), SYSUTCDATETIME())
         `);
 
       // User instances are now governed directly by DEFAULT_USER template.
@@ -218,12 +220,11 @@ async function registerSocialUser({
   }
 
   return {
-    user_id: effectiveUserId,
-    instance_id: userInstanceId,
+    user_id: effective_user_id,
+    instance_id: user_instance_id,
     tenant_user_id: null,
     instance_type: 'user',
     status: 'active',
-    team_seed_count: 0,
   };
 }
 

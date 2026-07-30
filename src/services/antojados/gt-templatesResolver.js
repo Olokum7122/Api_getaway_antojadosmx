@@ -107,33 +107,135 @@ async function getTemplate(templateCode, { scopeType } = {}) {
 
 async function rebuildTemplate(templateCode, { scopeType }) {
   const pool = getPool('antojados');
-  // Purge existing template rows first to avoid legacy collisions before rebuilding.
-  await pool.request()
+  const updateResult = await pool.request()
     .input('template_code', sql.NVarChar(100), templateCode)
     .input('scope_type', sql.NVarChar(20), scopeType)
     .query(`
-      DELETE FROM antojados_core.sys_sub_dimension_location_template
-      WHERE template_code = @template_code
-        AND scope_type = @scope_type;
-
-      DELETE FROM antojados_core.sys_dimension_location_template
-      WHERE template_code = @template_code
-        AND scope_type = @scope_type;
+      ;WITH source_dimensions AS (
+        SELECT
+          d.dimension_id,
+          d.dimension_code,
+          d.parent_code,
+          d.dimension_type,
+          d.dimension_name,
+          d.meta_json,
+          JSON_VALUE(d.meta_json, '$.code_component') AS code_component,
+          ROW_NUMBER() OVER (
+            ORDER BY
+              CASE d.dimension_type WHEN 'MODULE' THEN 0 WHEN 'AREA' THEN 1 ELSE 2 END,
+              d.dimension_code
+          ) AS sort_order
+        FROM antojados_core.sys_dimension d
+        WHERE d.is_active = 1
+          AND d.review_status = 'APPROVED'
+      )
+      UPDATE t
+      SET
+        t.component_code = COALESCE(s.code_component, s.dimension_code),
+        t.node_kind = s.dimension_type,
+        t.node_level = CASE s.dimension_type WHEN 'MODULE' THEN 0 WHEN 'AREA' THEN 2 ELSE 3 END,
+        t.code = s.dimension_code,
+        t.label = s.dimension_name,
+        t.module_code = CASE WHEN s.dimension_type = 'MODULE' THEN s.dimension_code ELSE NULL END,
+        t.area_code = CASE WHEN s.dimension_type IN ('AREA', 'COMPONENT') THEN COALESCE(s.parent_code, s.dimension_code) ELSE NULL END,
+        t.is_leaf = CASE WHEN s.dimension_type = 'COMPONENT' THEN 1 ELSE 0 END,
+        t.parent_dimension_id = p.dimension_id,
+        t.root_dimension_id = r.dimension_id,
+        t.meta_json = s.meta_json,
+        t.sort_order = s.sort_order,
+        t.control_mode = COALESCE(NULLIF(t.control_mode, ''), 'DEFAULT'),
+        t.is_active = 1,
+        t.updated_at = SYSUTCDATETIME()
+      FROM antojados_core.sys_dimension_location_template t
+      INNER JOIN source_dimensions s ON s.dimension_id = t.dimension_id
+      LEFT JOIN antojados_core.sys_dimension p ON p.dimension_code = s.parent_code
+      LEFT JOIN antojados_core.sys_dimension r ON r.dimension_code = COALESCE(NULLIF(PARSENAME(REPLACE(s.dimension_code, '.', '.'), 4), ''), NULL)
+      WHERE t.template_code = @template_code
+        AND t.scope_type = @scope_type;
     `);
 
-  const dimResult = await pool.request()
+  const insertResult = await pool.request()
     .input('template_code', sql.NVarChar(100), templateCode)
     .input('scope_type', sql.NVarChar(20), scopeType)
-    .execute('antojados_core.sp_sys_dimension_location_template_rebuild');
-
-  const subResult = await pool.request()
-    .input('template_code', sql.NVarChar(100), templateCode)
-    .input('scope_type', sql.NVarChar(20), scopeType)
-    .execute('antojados_core.sp_sys_sub_dimension_location_template_rebuild');
+    .query(`
+      ;WITH source_dimensions AS (
+        SELECT
+          d.dimension_id,
+          d.dimension_code,
+          d.parent_code,
+          d.dimension_type,
+          d.dimension_name,
+          d.meta_json,
+          JSON_VALUE(d.meta_json, '$.code_component') AS code_component,
+          ROW_NUMBER() OVER (
+            ORDER BY
+              CASE d.dimension_type WHEN 'MODULE' THEN 0 WHEN 'AREA' THEN 1 ELSE 2 END,
+              d.dimension_code
+          ) AS sort_order
+        FROM antojados_core.sys_dimension d
+        WHERE d.is_active = 1
+          AND d.review_status = 'APPROVED'
+      )
+      INSERT INTO antojados_core.sys_dimension_location_template (
+        template_location_id,
+        template_code,
+        scope_type,
+        dimension_id,
+        component_code,
+        visible,
+        enabled,
+        sort_order,
+        meta_json,
+        is_active,
+        node_kind,
+        node_level,
+        code,
+        label,
+        module_code,
+        area_code,
+        is_leaf,
+        parent_dimension_id,
+        root_dimension_id,
+        control_mode
+      )
+      SELECT
+        CONVERT(nvarchar(64), NEWID()),
+        @template_code,
+        @scope_type,
+        s.dimension_id,
+        COALESCE(s.code_component, s.dimension_code),
+        1,
+        1,
+        s.sort_order,
+        s.meta_json,
+        1,
+        s.dimension_type,
+        CASE s.dimension_type WHEN 'MODULE' THEN 0 WHEN 'AREA' THEN 2 ELSE 3 END,
+        s.dimension_code,
+        s.dimension_name,
+        CASE WHEN s.dimension_type = 'MODULE' THEN s.dimension_code ELSE NULL END,
+        CASE WHEN s.dimension_type IN ('AREA', 'COMPONENT') THEN COALESCE(s.parent_code, s.dimension_code) ELSE NULL END,
+        CASE WHEN s.dimension_type = 'COMPONENT' THEN 1 ELSE 0 END,
+        p.dimension_id,
+        NULL,
+        'DEFAULT'
+      FROM source_dimensions s
+      LEFT JOIN antojados_core.sys_dimension p ON p.dimension_code = s.parent_code
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM antojados_core.sys_dimension_location_template t
+        WHERE t.template_code = @template_code
+          AND t.scope_type = @scope_type
+          AND t.dimension_id = s.dimension_id
+      );
+    `);
 
   return {
-    dimensions: dimResult.recordset[0],
-    sub_dimensions: subResult.recordset[0],
+    dimensions: {
+      updated: Number(updateResult.rowsAffected?.[0] || 0),
+      inserted: Number(insertResult.rowsAffected?.[0] || 0),
+    },
+    sub_dimensions: { updated: 0, inserted: 0 },
   };
 }
 
